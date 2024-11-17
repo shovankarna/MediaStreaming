@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: MediaStreaming
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mydatabase
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # Use 'create' for initial testing, change to 'update' or 'validate' in production
+    show-sql: true
+
+server:
+  port: 8050
+
+
