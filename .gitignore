@@ -1,33 +1,71 @@
-HELP.md
-target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+# Ignore environment files
+.env
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
+# Ignore logs
+logs/
+*.log
 
-### IntelliJ IDEA ###
-.idea
-*.iws
+# Ignore Docker-specific files
+docker-compose.override.yml
+Dockerfile
+.dockerignore
+
+# Ignore storage-related data
+STORAGE/
+STORAGE/minio_data/
+STORAGE/postgres_data/
+STORAGE/rabbitmq_data/
+STORAGE/redis_data/
+
+# Ignore IDE-specific files
+.idea/
+.vscode/
 *.iml
 *.ipr
+*.iws
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+# Ignore system-generated files
+*.DS_Store
+*.Thumbs.db
+
+# Ignore build and dependency files
+target/
 build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+out/
+*.class
+*.jar
+*.war
+*.ear
 
-### VS Code ###
-.vscode/
+# Ignore Maven and Gradle files
+.mvn/
+.gradle/
+**/build/
+**/target/
+!**/src/main/**/target/ # Keep necessary build artifacts if needed
+
+# Ignore temporary and swap files
+*.swp
+*.swo
+*.tmp
+*.bak
+*.~*
+
+# Ignore node_modules (if any frontend is added later)
+node_modules/
+
+# Ignore compiled assets (if any frontend)
+dist/
+public/
+
+# Ignore coverage and test-related files
+coverage/
+test-output/
+*.test.js.snap
+
+# Ignore dependencies (if using dependency management)
+.pnpm-store/
+.yarn/
+.yarn-cache/
+.yarn-error.log
+npm-debug.log
