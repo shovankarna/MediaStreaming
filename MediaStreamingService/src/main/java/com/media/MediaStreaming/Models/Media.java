@@ -2,12 +2,6 @@ package com.media.MediaStreaming.Models;
 
 import java.time.LocalDateTime;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
 import lombok.Data;
 
 import jakarta.persistence.*;
@@ -43,4 +37,8 @@ public class Media {
     private boolean isPublic = false;
 
     private String secureToken;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private MediaStatus status = MediaStatus.UPLOADED; // Default status is 'UPLOADED'
 }

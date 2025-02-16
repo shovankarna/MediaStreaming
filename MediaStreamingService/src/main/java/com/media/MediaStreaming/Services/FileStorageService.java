@@ -1,157 +1,208 @@
 package com.media.MediaStreaming.Services;
 
-import java.io.FileOutputStream;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
 
+import javax.imageio.ImageIO;
+
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.tika.Tika;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.media.MediaStreaming.Models.ImageDetails;
-import com.media.MediaStreaming.Models.Media;
-import com.media.MediaStreaming.Models.MediaType;
-import com.media.MediaStreaming.Models.PdfDetails;
-import com.media.MediaStreaming.Models.VideoDetails;
-import com.media.MediaStreaming.Models.VideoSegment;
-import com.media.MediaStreaming.Repository.ImageDetailsRepository;
-import com.media.MediaStreaming.Repository.MediaRepository;
-import com.media.MediaStreaming.Repository.PdfDetailsRepository;
-import com.media.MediaStreaming.Repository.VideoDetailsRepository;
-
-import java.io.File;
-import java.util.List;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+import com.media.MediaStreaming.DTO.VideoProcessingRequest;
+import com.media.MediaStreaming.Models.*;
+import com.media.MediaStreaming.Repository.*;
+import com.media.MediaStreaming.config.RabbitMQConfig;
 
 @Service
 public class FileStorageService {
 
     private static final Logger logger = LoggerFactory.getLogger(FileStorageService.class);
 
-    @Autowired
-    private MediaRepository mediaRepository;
+    // Load paths from application.yml
+    @Value("${media.storage.base-path}")
+    private String basePath;
 
-    @Autowired
-    private VideoProcessingService videoProcessingService;
+    @Value("${media.storage.video-path}")
+    private String videoPath;
 
-    @Autowired
-    private VideoDetailsRepository videoDetailsRepository;
+    @Value("${media.storage.image-path}")
+    private String imagePath;
 
-    @Autowired
-    private ImageDetailsRepository imageDetailsRepository;
+    @Value("${media.storage.pdf-path}")
+    private String pdfPath;
 
-    @Autowired
-    private PdfDetailsRepository pdfDetailsRepository;
+    @Value("${media.storage.segment-path}")
+    private String segmentPath;
 
-    public String storeFile(MultipartFile file, String externalUserId) throws Exception {
+    private final RabbitTemplate rabbitTemplate;
+    private final MediaRepository mediaRepository;
+    private final VideoDetailsRepository videoDetailsRepository;
+    private final ImageDetailsRepository imageDetailsRepository;
+    private final PdfDetailsRepository pdfDetailsRepository;
+
+    public FileStorageService(
+            RabbitTemplate rabbitTemplate,
+            MediaRepository mediaRepository,
+            VideoDetailsRepository videoDetailsRepository,
+            ImageDetailsRepository imageDetailsRepository,
+            PdfDetailsRepository pdfDetailsRepository) {
+        this.rabbitTemplate = rabbitTemplate;
+        this.mediaRepository = mediaRepository;
+        this.videoDetailsRepository = videoDetailsRepository;
+        this.imageDetailsRepository = imageDetailsRepository;
+        this.pdfDetailsRepository = pdfDetailsRepository;
+    }
+
+    public String storeFile(MultipartFile file, String externalUserId, boolean keepOriginal) throws IOException {
         logger.info("Starting file upload for user: {}", externalUserId);
+
+        // Sanitize the file name
         String sanitizedFileName = sanitizeFileName(file.getOriginalFilename());
-        if (sanitizedFileName.isEmpty()) {
-            logger.error("Invalid file name: {}", file.getOriginalFilename());
-            throw new IllegalArgumentException("Invalid file name");
-        }
-
+        // Determine the media type (video, image, pdf)
         MediaType mediaType = determineMediaType(sanitizedFileName)
-                .orElseThrow(() -> {
-                    logger.error("Unsupported media type for file: {}", sanitizedFileName);
-                    return new IllegalArgumentException("Unsupported media type");
-                });
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported media type"));
 
-        Path storagePath;
+        // Get the storage path for the user-specific directory
+        Path storagePath = getStoragePath(mediaType, externalUserId);
+        Files.createDirectories(storagePath); // Create the directories if they don't exist
+        Path filePath = storagePath.resolve(sanitizedFileName); // Resolve the full path for the file
+
+        // Transfer the file to the storage location
+        file.transferTo(filePath.toFile());
+        logger.info("File saved successfully at: {}", filePath);
+
+        // Create and save media record
+        Media media = new Media();
+        media.setExternalUserId(externalUserId);
+        media.setMediaType(mediaType);
+        media.setFilePath(filePath.toString());
+        media.setStatus(MediaStatus.UPLOADED); // Set initial status
+        Media savedMedia = mediaRepository.save(media);
+
+        // Update status to "PROCESSING"
+        savedMedia.setStatus(MediaStatus.PROCESSING);
+        mediaRepository.save(savedMedia);
+
+        // Process the file based on its media type
         switch (mediaType) {
             case VIDEO:
-                storagePath = Paths.get("/media/videos/");
+                handleVideoFile(filePath, savedMedia, keepOriginal, externalUserId);
                 break;
             case IMAGE:
-                storagePath = Paths.get("/media/images/");
+                handleImageFile(filePath, savedMedia);
                 break;
             case PDF:
-                storagePath = Paths.get("/media/documents/");
+                handlePdfFile(filePath, savedMedia);
                 break;
             default:
-                logger.error("Unhandled media type: {}", mediaType);
-                throw new IllegalArgumentException("Unhandled media type");
+                logger.warn("Unhandled media type: {}", mediaType);
         }
+
+        return "File uploaded and processed successfully!";
+    }
+
+    private Path getStoragePath(MediaType mediaType, String externalUserId) {
+        // Construct the user-specific path dynamically
+        switch (mediaType) {
+            case VIDEO:
+                return Paths.get(basePath + "/media/" + externalUserId + videoPath);
+            case IMAGE:
+                return Paths.get(basePath + "/media/" + externalUserId + imagePath);
+            case PDF:
+                return Paths.get(basePath + "/media/" + externalUserId + pdfPath);
+            default:
+                throw new IllegalArgumentException("Unsupported media type");
+        }
+    }
+
+    private void handleVideoFile(Path filePath, Media savedMedia, boolean keepOriginal, String externalUserId) {
+        String uniqueVideoId = UUID.randomUUID().toString();
+
+        // Create user-specific directories
+        String originalVideoDir = basePath + "/media/" + externalUserId + videoPath + "/" + uniqueVideoId;
+        String segmentedVideoDir = basePath + "/media/" + externalUserId + segmentPath + "/" + uniqueVideoId;
 
         try {
-            Files.createDirectories(storagePath);
-            Path filePath = storagePath.resolve(sanitizedFileName);
-            try (FileOutputStream fos = new FileOutputStream(new File(filePath.toString()))) {
-                fos.write(file.getBytes());
-            }
-            logger.info("File saved successfully at path: {}", filePath);
+            Files.createDirectories(Paths.get(originalVideoDir));
+            Files.createDirectories(Paths.get(segmentedVideoDir));
 
-            Media media = new Media();
-            media.setExternalUserId(externalUserId);
-            media.setMediaType(mediaType);
-            media.setFilePath(filePath.toString());
-            Media savedMedia = mediaRepository.save(media);
-            logger.info("Media details saved to database with ID: {}", savedMedia.getMediaId());
+            // Move the uploaded file to original videos directory
+            Path destinationPath = Paths.get(originalVideoDir, filePath.getFileName().toString());
+            Files.move(filePath, destinationPath);
 
-            switch (mediaType) {
-                case VIDEO:
-                    // Process video after saving it
-                    videoProcessingService.processVideo(filePath.toString(), "/media/processed_videos/");
-                    // Handle segments and save video details
-                    List<VideoSegment> segments = videoProcessingService.getSegments();
-                    for (VideoSegment segment : segments) {
-                        VideoDetails videoDetails = new VideoDetails();
-                        videoDetails.setMedia(savedMedia);
-                        videoDetails.setResolution(segment.getResolution());
-                        videoDetails.setSegmentPath(segment.getPath());
-                        videoDetails.setDuration(segment.getDuration());
-                        videoDetails.setCodec(segment.getCodec());
-                        videoDetailsRepository.save(videoDetails);
-                    }
-                    logger.info("Video details processed and saved for file: {}", sanitizedFileName);
-                    break;
-                case IMAGE:
-                    BufferedImage image = ImageIO.read(filePath.toFile());
-                    if (image != null) {
-                        ImageDetails imageDetails = new ImageDetails();
-                        imageDetails.setMedia(savedMedia);
-                        imageDetails.setWidth(image.getWidth());
-                        imageDetails.setHeight(image.getHeight());
-                        imageDetails.setFormat(getImageFormat(sanitizedFileName));
-                        imageDetailsRepository.save(imageDetails);
-                        logger.info("Image details saved for file: {}", sanitizedFileName);
-                    } else {
-                        logger.error("Failed to read image file: {}", sanitizedFileName);
-                        throw new IOException("Failed to read image file");
-                    }
-                    break;
-                case PDF:
-                    try (PDDocument document = Loader.loadPDF(filePath.toFile())) {
-                        PdfDetails pdfDetails = new PdfDetails();
-                        pdfDetails.setMedia(savedMedia);
-                        pdfDetails.setPageCount(document.getNumberOfPages());
-                        pdfDetails.setSizeInKb((int) (Files.size(filePath) / 1024));
-                        pdfDetailsRepository.save(pdfDetails);
-                        logger.info("PDF details saved for file: {}", sanitizedFileName);
-                    } catch (IOException e) {
-                        logger.error("Failed to read PDF file: {}", sanitizedFileName, e);
-                        throw new IOException("Failed to read PDF file", e);
-                    }
-                    break;
-                default:
-                    break;
-            }
+            VideoProcessingRequest request = new VideoProcessingRequest();
+            request.setUserId(externalUserId);
+            request.setFilePath(destinationPath.toString());
+            request.setOutputPath(segmentedVideoDir);
+            request.setKeepOriginal(keepOriginal);
+            request.setMediaId(savedMedia.getMediaId().toString());
+            request.setUniqueVideoId(uniqueVideoId);
+            request.setTargetResolutions(Arrays.asList("1920x1080", "1280x720", "854x480"));
+
+            // Save initial video details
+            VideoDetails videoDetails = new VideoDetails();
+            videoDetails.setMedia(savedMedia);
+            videoDetails.setOriginalVideoPath(destinationPath.toString());
+            videoDetails.setSegmentedFolderPath(segmentedVideoDir);
+            videoDetails.setUniqueVideoId(uniqueVideoId);
+            videoDetailsRepository.save(videoDetails);
+
+            rabbitTemplate.convertAndSend(RabbitMQConfig.VIDEO_PROCESSING_QUEUE, request);
+            logger.info("Video processing task queued for file: {}", destinationPath);
+
         } catch (IOException e) {
-            logger.error("Error occurred while storing file: {}", sanitizedFileName, e);
+            logger.error("Error handling video file", e);
+            throw new RuntimeException("Failed to process video file", e);
+        }
+    }
+
+    private void handleImageFile(Path filePath, Media savedMedia) throws IOException {
+        BufferedImage image = ImageIO.read(filePath.toFile());
+        if (image != null) {
+            ImageDetails imageDetails = new ImageDetails();
+            imageDetails.setMedia(savedMedia);
+            imageDetails.setWidth(image.getWidth());
+            imageDetails.setHeight(image.getHeight());
+            imageDetails.setFormat(getImageFormat(filePath.toString()));
+            imageDetailsRepository.save(imageDetails);
+
+            savedMedia.setStatus(MediaStatus.PROCESSED);
+            mediaRepository.save(savedMedia);
+        } else {
+            savedMedia.setStatus(MediaStatus.FAILED);
+            mediaRepository.save(savedMedia);
+            throw new IOException("Failed to read image file");
+        }
+    }
+
+    private void handlePdfFile(Path filePath, Media savedMedia) throws IOException {
+        try (PDDocument document = Loader.loadPDF(filePath.toFile())) {
+            PdfDetails pdfDetails = new PdfDetails();
+            pdfDetails.setMedia(savedMedia);
+            pdfDetails.setPageCount(document.getNumberOfPages());
+            pdfDetails.setSizeInKb((int) (Files.size(filePath) / 1024));
+            pdfDetailsRepository.save(pdfDetails);
+
+            savedMedia.setStatus(MediaStatus.PROCESSED);
+            mediaRepository.save(savedMedia);
+        } catch (IOException e) {
+            savedMedia.setStatus(MediaStatus.FAILED);
+            mediaRepository.save(savedMedia);
             throw e;
         }
-
-        return "File uploaded and stored successfully!";
     }
 
     private String sanitizeFileName(String fileName) {
@@ -166,13 +217,13 @@ public class FileStorageService {
             case "mov":
                 return Optional.of(MediaType.VIDEO);
             case "jpg":
-            case "png":
             case "jpeg":
+            case "png":
                 return Optional.of(MediaType.IMAGE);
             case "pdf":
                 return Optional.of(MediaType.PDF);
             default:
-                return Optional.of(MediaType.OTHER);
+                return Optional.empty();
         }
     }
 

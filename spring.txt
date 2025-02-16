@@ -1,0 +1,744 @@
+spring:
+  application:
+    name: MediaStreaming
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mydatabase
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # Use 'create' for initial testing, change to 'update' or 'validate' in production
+    show-sql: true
+
+  # RabbitMQ configuration
+  rabbitmq:
+    host: localhost  # Use the container name as the hostname
+    port: 5672
+    username: ${RABBITMQ_DEFAULT_USER}
+    password: ${RABBITMQ_DEFAULT_PASS}
+    virtual-host: /
+
+
+  servlet:
+    multipart:
+      max-file-size: 100MB # Adjust this to your desired maximum file size
+      max-request-size: 100MB # Adjust this for the maximum request size
+
+# Media paths configuration
+media:
+  storage:
+    base-path: D:/DEV/SpringBoot/MediaStreaming/STORAGE
+    video-path: /videos/original_videos
+    image-path: /images
+    pdf-path: /pdfs
+    segment-path: /videos/segmented
+
+
+server:
+  port: 8050
+
+# Optionally configure logging settings here (if needed)
+logging:
+  level:
+    org.springframework: INFO
+    com.media: DEBUG
+
+
+@Configuration
+public class RabbitMQConfig {
+
+    public static final String VIDEO_PROCESSING_QUEUE = "videoProcessingQueue";
+
+    @Bean
+    public Queue videoProcessingQueue() {
+        return new Queue(VIDEO_PROCESSING_QUEUE, true);
+    }
+
+    @Bean
+    public MessageConverter jsonMessageConverter() {
+        return new Jackson2JsonMessageConverter();
+    }
+
+    @Bean
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
+        RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(messageConverter);
+        return rabbitTemplate;
+    }
+}
+
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                // Disable CSRF protection
+                .csrf(csrf -> csrf.disable())
+
+                // Disable HTTP Basic authentication
+                .httpBasic(basic -> basic.disable())
+
+                // Disable form login
+                .formLogin(form -> form.disable())
+
+                // Authorize all requests without any restrictions
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().permitAll());
+
+        return http.build();
+    }
+}
+
+
+@RestController
+@RequestMapping("/api/upload")
+public class FileUploadController {
+
+    @Autowired
+    private FileStorageService fileStorageService;
+
+    @PostMapping(value = "/media")
+    public ResponseEntity<String> uploadMedia(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("File is empty.");
+        }
+
+        try {
+            String result = fileStorageService.storeFile(file, "123abc456", true);
+            return ResponseEntity.ok("File uploaded successfully: " + file.getOriginalFilename());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("File upload failed: " + e.getMessage());
+        }
+    }
+}
+
+
+@Data
+@AllArgsConstructor // Lombok annotation to generate constructor with all fields
+@NoArgsConstructor // Lombok annotation to generate a no-arg constructor
+public class VideoProcessingRequest implements Serializable {
+
+    @JsonProperty("filePath")
+    private String filePath;
+
+    @JsonProperty("outputPath")
+    private String outputPath;
+
+    @JsonProperty("keepOriginal")
+    private boolean keepOriginal;
+
+    @JsonProperty("mediaId")
+    private String mediaId;
+
+    @JsonProperty("userId")
+    private String userId;
+
+    @JsonProperty("requestedResolution")
+    private String requestedResolution;
+
+}
+
+
+package com.media.MediaStreaming.Models;
+
+public enum Action {
+    VIEW,
+    DOWNLOAD,
+    STREAM
+}
+
+
+@Data
+@Entity
+@Table(name = "image_details")
+public class ImageDetails {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long imageId;
+
+    @ManyToOne(optional = false, cascade = CascadeType.ALL)
+    @JoinColumn(name = "media_id", referencedColumnName = "mediaId", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private Media media;
+
+    private Integer width;
+
+    private Integer height;
+
+    private String format;
+}
+
+
+@Entity
+@Table(name = "media", indexes = {
+        @Index(name = "idx_external_user_id", columnList = "externalUserId"),
+        @Index(name = "idx_media_type", columnList = "mediaType")
+})
+@Data
+public class Media {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long mediaId;
+
+    @Column(nullable = false)
+    private String externalUserId;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private MediaType mediaType;
+
+    @Column(nullable = false)
+    private String filePath;
+
+    private String thumbnailPath;
+
+    @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    private LocalDateTime uploadDate = LocalDateTime.now();
+
+    @Column(nullable = false)
+    private boolean isPublic = false;
+
+    private String secureToken;
+
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private MediaStatus status = MediaStatus.UPLOADED; // Default status is 'UPLOADED'
+}
+
+@Data
+@Entity
+@Table(name = "media_access_log")
+public class MediaAccessLog {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long accessId;
+
+    @ManyToOne(optional = false, cascade = CascadeType.ALL)
+    @JoinColumn(name = "media_id", referencedColumnName = "mediaId", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private Media media;
+
+    @Column(nullable = false)
+    private String externalUserId;
+
+    @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    private LocalDateTime accessTime = LocalDateTime.now();
+
+    private String ipAddress;
+
+    @Enumerated(EnumType.STRING)
+    private Action action;
+
+}
+
+
+public enum MediaStatus {
+    UPLOADED("Uploaded"),
+    PROCESSING("Processing"),
+    PROCESSED("Processed"),
+    FAILED("Failed"),
+    DELETED("Deleted");
+
+    private final String status;
+
+    MediaStatus(String status) {
+        this.status = status;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    @Override
+    public String toString() {
+        return this.status;
+    }
+}
+
+
+public enum MediaType {
+    VIDEO, 
+    IMAGE, 
+    PDF, 
+    OTHER
+}
+
+@Data
+@Entity
+@Table(name = "pdf_details")
+public class PdfDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long pdfId;
+
+    @ManyToOne(optional = false, cascade = CascadeType.ALL)
+    @JoinColumn(name = "media_id", referencedColumnName = "mediaId", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private Media media;
+
+    private Integer pageCount;
+
+    private Integer sizeInKb;
+}
+
+
+@Data
+@Entity
+@Table(name = "user_media_progress")
+public class UserMediaProgress {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long progressId;
+
+    @ManyToOne(optional = false, cascade = CascadeType.ALL)
+    @JoinColumn(name = "media_id", referencedColumnName = "mediaId", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private Media media;
+
+    @Column(nullable = false)
+    private String externalUserId;
+
+    private Integer lastSeekTimePage;
+
+    @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    private LocalDateTime lastAccessTime = LocalDateTime.now();
+
+}
+
+@Data
+@Entity
+@Table(name = "video_details")
+public class VideoDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long videoId;
+
+    @ManyToOne(optional = false, cascade = CascadeType.ALL)
+    @JoinColumn(name = "media_id", referencedColumnName = "mediaId", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private Media media;
+
+    private String originalVideoPath;
+    private String segmentedFolderPath;
+    private String resolution;
+    private double duration;
+    private String codec;
+    private String hlsPlaylistPath;
+
+    // One-to-many relationship with VideoSegment
+    @OneToMany(mappedBy = "videoDetails", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<VideoSegment> videoSegments = new ArrayList<>();
+}
+
+
+
+@Data
+@Entity
+@Table(name = "video_segments")
+public class VideoSegment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long segmentId; // Unique identifier for each video segment
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "video_id", referencedColumnName = "videoId", nullable = false)
+    private VideoDetails videoDetails; // Link to the parent video
+
+    private String resolution; // e.g., "1080p", "720p", "480p"
+    private String path; // Path to the segmented file
+    private double duration; // Duration of the segment in seconds
+    private String codec; // Codec used (e.g., "h264")
+
+    // Other metadata as required
+}
+
+
+
+@Service
+public class FileStorageService {
+
+    private static final Logger logger = LoggerFactory.getLogger(FileStorageService.class);
+
+    // Load paths from application.yml
+    @Value("${media.storage.base-path}")
+    private String basePath;
+
+    @Value("${media.storage.video-path}")
+    private String videoPath;
+
+    @Value("${media.storage.image-path}")
+    private String imagePath;
+
+    @Value("${media.storage.pdf-path}")
+    private String pdfPath;
+
+    @Value("${media.storage.segment-path}")
+    private String segmentPath;
+
+    private final RabbitTemplate rabbitTemplate;
+    private final MediaRepository mediaRepository;
+    private final VideoDetailsRepository videoDetailsRepository;
+    private final ImageDetailsRepository imageDetailsRepository;
+    private final PdfDetailsRepository pdfDetailsRepository;
+
+    public FileStorageService(
+            RabbitTemplate rabbitTemplate,
+            MediaRepository mediaRepository,
+            VideoDetailsRepository videoDetailsRepository,
+            ImageDetailsRepository imageDetailsRepository,
+            PdfDetailsRepository pdfDetailsRepository) {
+        this.rabbitTemplate = rabbitTemplate;
+        this.mediaRepository = mediaRepository;
+        this.videoDetailsRepository = videoDetailsRepository;
+        this.imageDetailsRepository = imageDetailsRepository;
+        this.pdfDetailsRepository = pdfDetailsRepository;
+    }
+
+    public String storeFile(MultipartFile file, String externalUserId, boolean keepOriginal) throws IOException {
+        logger.info("Starting file upload for user: {}", externalUserId);
+
+        // Sanitize the file name
+        String sanitizedFileName = sanitizeFileName(file.getOriginalFilename());
+        // Determine the media type (video, image, pdf)
+        MediaType mediaType = determineMediaType(sanitizedFileName)
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported media type"));
+
+        // Get the storage path for the user-specific directory
+        Path storagePath = getStoragePath(mediaType, externalUserId);
+        Files.createDirectories(storagePath); // Create the directories if they don't exist
+        Path filePath = storagePath.resolve(sanitizedFileName); // Resolve the full path for the file
+
+        // Transfer the file to the storage location
+        file.transferTo(filePath.toFile());
+        logger.info("File saved successfully at: {}", filePath);
+
+        // Create and save media record
+        Media media = new Media();
+        media.setExternalUserId(externalUserId);
+        media.setMediaType(mediaType);
+        media.setFilePath(filePath.toString());
+        media.setStatus(MediaStatus.UPLOADED); // Set initial status
+        Media savedMedia = mediaRepository.save(media);
+
+        // Update status to "PROCESSING"
+        savedMedia.setStatus(MediaStatus.PROCESSING);
+        mediaRepository.save(savedMedia);
+
+        // Process the file based on its media type
+        switch (mediaType) {
+            case VIDEO:
+                handleVideoFile(filePath, savedMedia, keepOriginal, externalUserId);
+                break;
+            case IMAGE:
+                handleImageFile(filePath, savedMedia);
+                break;
+            case PDF:
+                handlePdfFile(filePath, savedMedia);
+                break;
+            default:
+                logger.warn("Unhandled media type: {}", mediaType);
+        }
+
+        return "File uploaded and processed successfully!";
+    }
+
+    private Path getStoragePath(MediaType mediaType, String externalUserId) {
+        // Construct the user-specific path dynamically
+        switch (mediaType) {
+            case VIDEO:
+                return Paths.get(basePath + "/media/" + externalUserId + videoPath);
+            case IMAGE:
+                return Paths.get(basePath + "/media/" + externalUserId + imagePath);
+            case PDF:
+                return Paths.get(basePath + "/media/" + externalUserId + pdfPath);
+            default:
+                throw new IllegalArgumentException("Unsupported media type");
+        }
+    }
+
+    private void handleVideoFile(Path filePath, Media savedMedia, boolean keepOriginal, String externalUserId) {
+        VideoProcessingRequest request = new VideoProcessingRequest();
+        request.setUserId(externalUserId);
+        request.setFilePath(filePath.toString());
+        request.setOutputPath(basePath + "/media/" + externalUserId + segmentPath);
+        request.setKeepOriginal(keepOriginal);
+        request.setMediaId(savedMedia.getMediaId().toString());
+
+        rabbitTemplate.convertAndSend("videoProcessingQueue", request);
+        logger.info("Video processing task queued for file: {}", filePath.getFileName());
+    }
+
+    private void handleImageFile(Path filePath, Media savedMedia) throws IOException {
+        BufferedImage image = ImageIO.read(filePath.toFile());
+        if (image != null) {
+            ImageDetails imageDetails = new ImageDetails();
+            imageDetails.setMedia(savedMedia);
+            imageDetails.setWidth(image.getWidth());
+            imageDetails.setHeight(image.getHeight());
+            imageDetails.setFormat(getImageFormat(filePath.toString()));
+            imageDetailsRepository.save(imageDetails);
+
+            savedMedia.setStatus(MediaStatus.PROCESSED);
+            mediaRepository.save(savedMedia);
+        } else {
+            savedMedia.setStatus(MediaStatus.FAILED);
+            mediaRepository.save(savedMedia);
+            throw new IOException("Failed to read image file");
+        }
+    }
+
+    private void handlePdfFile(Path filePath, Media savedMedia) throws IOException {
+        try (PDDocument document = Loader.loadPDF(filePath.toFile())) {
+            PdfDetails pdfDetails = new PdfDetails();
+            pdfDetails.setMedia(savedMedia);
+            pdfDetails.setPageCount(document.getNumberOfPages());
+            pdfDetails.setSizeInKb((int) (Files.size(filePath) / 1024));
+            pdfDetailsRepository.save(pdfDetails);
+
+            savedMedia.setStatus(MediaStatus.PROCESSED);
+            mediaRepository.save(savedMedia);
+        } catch (IOException e) {
+            savedMedia.setStatus(MediaStatus.FAILED);
+            mediaRepository.save(savedMedia);
+            throw e;
+        }
+    }
+
+    private String sanitizeFileName(String fileName) {
+        return fileName.replaceAll("[^a-zA-Z0-9\\.\\-]", "_");
+    }
+
+    private Optional<MediaType> determineMediaType(String fileName) {
+        String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+        switch (extension) {
+            case "mp4":
+            case "avi":
+            case "mov":
+                return Optional.of(MediaType.VIDEO);
+            case "jpg":
+            case "jpeg":
+            case "png":
+                return Optional.of(MediaType.IMAGE);
+            case "pdf":
+                return Optional.of(MediaType.PDF);
+            default:
+                return Optional.empty();
+        }
+    }
+
+    private String getImageFormat(String fileName) {
+        String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+        switch (extension) {
+            case "jpg":
+            case "jpeg":
+                return "JPEG";
+            case "png":
+                return "PNG";
+            default:
+                return "UNKNOWN";
+        }
+    }
+}
+
+
+@Service
+public class VideoProcessingConsumer {
+
+    private static final Logger logger = LoggerFactory.getLogger(VideoProcessingConsumer.class);
+
+    private final VideoProcessingService videoProcessingService;
+    private final MediaRepository mediaRepository;
+
+    public VideoProcessingConsumer(VideoProcessingService videoProcessingService,
+            MediaRepository mediaRepository) {
+        this.videoProcessingService = videoProcessingService;
+        this.mediaRepository = mediaRepository;
+    }
+
+    @RabbitListener(queues = RabbitMQConfig.VIDEO_PROCESSING_QUEUE)
+    public void processVideo(VideoProcessingRequest request) {
+        logger.info("Received video processing request for media ID: {}", request.getMediaId());
+
+        Media media = mediaRepository.findById(Long.parseLong(request.getMediaId())).orElse(null);
+
+        if (media == null) {
+            logger.error("Media not found for ID: {}", request.getMediaId());
+            return;
+        }
+
+        updateMediaStatus(media, MediaStatus.PROCESSING);
+
+        System.out.println("request.getFilePath() ====>" + request.getFilePath());
+        System.out.println("request.getUserId() ====>" + request.getUserId());
+
+
+        try {
+            videoProcessingService.processVideo(request.getUserId(), request.getFilePath());
+            logger.info("Video processing completed for file: {}", request.getFilePath());
+
+            if (!request.isKeepOriginal()) {
+                deleteOriginalFile(request.getFilePath());
+            }
+
+            updateMediaStatus(media, MediaStatus.PROCESSED);
+        } catch (Exception e) {
+            logger.error("Error processing video for media ID: {}", request.getMediaId(), e);
+            updateMediaStatus(media, MediaStatus.FAILED);
+        }
+    }
+
+    private void deleteOriginalFile(String filePath) {
+        try {
+            Path path = Paths.get(filePath);
+            if (Files.exists(path)) {
+                Files.delete(path);
+                logger.info("Original video deleted: {}", filePath);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to delete original video: {}", filePath, e);
+        }
+    }
+
+    private void updateMediaStatus(Media media, MediaStatus status) {
+        try {
+            media.setStatus(status);
+            mediaRepository.save(media);
+        } catch (Exception e) {
+            logger.error("Error updating media status for ID: {}", media.getMediaId(), e);
+        }
+    }
+}
+
+
+@Service
+public class VideoProcessingProducer {
+
+    private final RabbitTemplate rabbitTemplate;
+
+    public VideoProcessingProducer(RabbitTemplate rabbitTemplate) {
+        this.rabbitTemplate = rabbitTemplate;
+    }
+
+    public void sendVideoProcessingTask(VideoProcessingRequest request) {
+        rabbitTemplate.convertAndSend(RabbitMQConfig.VIDEO_PROCESSING_QUEUE, request);
+    }
+}
+
+
+
+@Service
+public class VideoProcessingService {
+
+    @Value("${media.storage.base-path}")
+    private String basePath; // Base storage path (e.g., /medisegmentPatha)
+
+    @Value("${media.storage.segment-path}")
+    private String segmentPath; // Path for segmented files (inside user folder)
+
+    @Value("${media.storage.video-path}")
+    private String videoPath; // Path for original videos (inside user folder)
+
+    private List<VideoSegment> segments = new ArrayList<>();
+
+    // Process video and save both original and segmented files
+    public void processVideo(String userId, String inputFilePath) throws Exception {
+        System.out.println("userId ====>" + userId);
+        // Define user folder (e.g., /media/{userId})
+        String userFolder = basePath + "/media/" + userId;
+
+        // Ensure that user folders for videos and segments exist
+        File userVideoFolder = new File(userFolder + "/videos/original_videos");
+        File userSegmentFolder = new File(userFolder + "/videos/segmented");
+
+        if (!userVideoFolder.exists()) {
+            userVideoFolder.mkdirs();
+        }
+        if (!userSegmentFolder.exists()) {
+            userSegmentFolder.mkdirs();
+        }
+
+        // Define input and output file paths
+        String inputFullPath = inputFilePath; // Input video stored in videos directory
+        // String outputDir = userFolder + "/videos/segmented/output_" +
+        // System.currentTimeMillis();
+        String outputDir = basePath + "/media/" + userId + segmentPath;
+
+        // Command for FFmpeg to segment the video into multiple resolutions
+        String[] command = {
+                "ffmpeg", "-i", inputFullPath, "-preset", "fast",
+                "-g", "48", "-sc_threshold", "0", "-map", "0",
+                "-c:v", "libx264", "-b:v:0", "3000k", "-s:v:0", "1920x1080",
+                "-b:v:1", "1500k", "-s:v:1", "1280x720", "-b:v:2", "800k", "-s:v:2", "854x480",
+                "-hls_time", "4", "-hls_list_size", "0",
+                "-hls_segment_filename", outputDir + "/%03d.ts",
+                outputDir + "/index.m3u8"
+        };
+
+        // Execute FFmpeg command
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        processBuilder.redirectErrorStream(true);
+        Process process = processBuilder.start();
+
+        // Log FFmpeg output
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+        }
+
+        // Wait for FFmpeg process to complete
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("FFmpeg process failed with exit code " + exitCode);
+        }
+
+        // Move the original video to the appropriate folder
+        // File originalVideo = new File(inputFullPath);
+        // File destination = new File(userFolder + "/videos/original/" + originalVideo.getName());
+        // if (!originalVideo.renameTo(destination)) {
+        //     throw new RuntimeException("Failed to move original video file.");
+        // }
+
+        // Create video segment metadata
+        for (int i = 0; i < 3; i++) {
+            VideoSegment segment = new VideoSegment();
+            String resolution = i == 0 ? "1920x1080" : (i == 1 ? "1280x720" : "854x480");
+            segment.setResolution(resolution);
+            segment.setPath(outputDir + "/" + String.format("%03d.ts", i));
+            segment.setDuration(4); // HLS time setting
+            segment.setCodec("h264");
+            segments.add(segment);
+
+            // Save segmented files (TS files) to the segmented folder
+            File segmentedFile = new File(outputDir + "/" + String.format("%03d.ts", i));
+            File segmentDestination = new File(userFolder + "/videos/segmented/" + segmentedFile.getName());
+            if (!segmentedFile.renameTo(segmentDestination)) {
+                throw new RuntimeException("Failed to move segmented file.");
+            }
+        }
+    }
+
+    // Get the list of video segments
+    public List<VideoSegment> getSegments() {
+        return segments;
+    }
+}
+
+
+
+
