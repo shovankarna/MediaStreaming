@@ -1,4 +1,4 @@
-package com.mediastream.AstroMediaVault;
+package com.astromediavault.AstroMediaVault;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

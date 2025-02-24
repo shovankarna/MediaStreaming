@@ -5,6 +5,7 @@ services:
     image: postgres:15
     container_name: media_postgres
     restart: always
+    env_file: .env
     environment:
       POSTGRES_USER: media_user
       POSTGRES_PASSWORD: media_password
@@ -18,12 +19,15 @@ services:
     image: minio/minio
     container_name: media_minio
     restart: always
+    env_file: .env
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_BROWSER: "on"
+      MINIO_HTTP_SIZE_LIMIT: "2G"  # Increase MinIO upload limit
     ports:
       - "9000:9000"
-      - "9001:9001" # MinIO console
+      - "9001:9001"
     command: server /data --console-address ":9001"
     volumes:
       - ./STORAGE/minio_data:/data
@@ -32,12 +36,13 @@ services:
     image: rabbitmq:3-management
     container_name: media_rabbitmq
     restart: always
-    ports:
-      - "5672:5672"   # RabbitMQ broker
-      - "15672:15672" # RabbitMQ management UI
+    env_file: .env
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     volumes:
       - ./STORAGE/rabbitmq_data:/var/lib/rabbitmq
 

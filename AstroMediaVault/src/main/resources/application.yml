@@ -1,0 +1,45 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: AstroMediaVault
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/${POSTGRES_DB:media_db}
+    username: ${POSTGRES_USER:media_user}
+    password: ${POSTGRES_PASSWORD:media_password}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      max-lifetime: 1800000
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 2GB
+      max-request-size: 2GB
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+
+  # minio:
+  #   url: http://${MINIO_HOST:localhost}:9000
+  #   access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  #   secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  #   bucket: media-storage
+
+storage:
+  local:
+    path: "D:/DEV/SpringBoot/MediaStreaming/AstroMediaVault/STORAGE/"
