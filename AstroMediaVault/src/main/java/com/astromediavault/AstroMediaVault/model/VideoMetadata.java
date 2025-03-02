@@ -10,6 +10,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@Builder
 @Table(name = "video_metadata")
 public class VideoMetadata {
 
@@ -28,7 +29,7 @@ public class VideoMetadata {
 
     private int durationSeconds;
 
-    private float frameRate;
+    private String frameRate;
 
     private String resolution;
 

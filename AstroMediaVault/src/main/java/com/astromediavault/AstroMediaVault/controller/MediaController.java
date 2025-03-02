@@ -97,4 +97,10 @@ public class MediaController {
     public ResponseEntity<ApiResponse<String>> deleteMedia(@PathVariable UUID mediaId) {
         return ResponseEntity.ok(mediaService.deleteMedia(mediaId));
     }
+
+    @GetMapping("/stream/{mediaId}")
+    public ResponseEntity<String> streamVideo(@PathVariable UUID mediaId) {
+        System.out.println("mediaId ===>" + mediaId);
+        return mediaService.streamVideo(mediaId);
+    }
 }

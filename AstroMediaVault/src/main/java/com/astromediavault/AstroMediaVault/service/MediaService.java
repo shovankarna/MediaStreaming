@@ -14,7 +14,9 @@ import lombok.RequiredArgsConstructor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -41,6 +43,8 @@ public class MediaService {
 
     private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
+    private final RabbitTemplate rabbitTemplate;
+
     private static final Logger logger = LoggerFactory.getLogger(MediaService.class);
 
     @Value("${storage.local.path}")
@@ -52,43 +56,52 @@ public class MediaService {
             MultipartFile file = request.getFile();
             String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
 
-            // Get user from database
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new MediaNotFoundException("User not found with ID: " + userId));
 
-            // Define structured storage path:
-            // STORAGE/media_files/users/{userId}/{fileType}/
-            String userFolder = Paths
-                    .get(localStoragePath, "users", userId.toString(), fileType.toString().toLowerCase()).toString();
+            // 📂 Define base user directory
+            String userBaseDir = Paths.get("users", userId.toString()).toString();
 
-            // Ensure the directory exists
-            File directory = new File(userFolder);
-            if (!directory.exists()) {
-                boolean created = directory.mkdirs();
-                if (!created) {
-                    throw new IOException("Failed to create directory: " + userFolder);
-                }
+            // 📂 Create separate folders for different media types (relative paths)
+            String mediaFolder = switch (fileType) {
+                case VIDEO -> Paths.get(userBaseDir, "videos", "original").toString();
+                case IMAGE -> Paths.get(userBaseDir, "images", "original").toString();
+                case PDF -> Paths.get(userBaseDir, "pdfs", "original").toString();
+            };
+
+            File directory = new File(Paths.get(localStoragePath, mediaFolder).toString());
+            if (!directory.exists() && !directory.mkdirs()) {
+                throw new IOException("Failed to create directory: " + mediaFolder);
             }
 
-            // Final file path
-            String filePath = Paths.get(userFolder, fileName).toString();
-            File localFile = new File(filePath);
+            // Save the file using relative path
+            String relativePath = Paths.get(mediaFolder, fileName).toString();
+            String fullPath = Paths.get(localStoragePath, relativePath).toString();
 
-            // Save file locally
+            File localFile = new File(fullPath);
             file.transferTo(localFile);
 
-            // Save media metadata
+            // Save media metadata in the database (only storing relative path)
             Media media = new Media();
             media.setUser(user);
             media.setFileName(file.getOriginalFilename());
             media.setFileSize(file.getSize());
             media.setFileType(fileType);
-            media.setStoragePath(filePath);
-
+            media.setStoragePath(relativePath); // Store only relative path
             mediaRepository.save(media);
 
-            logger.info("Media uploaded successfully: {}", filePath);
-            return ApiResponse.success("File uploaded successfully!", filePath);
+            // 🔴 Send jobs to RabbitMQ for processing
+            if (fileType == Media.FileType.VIDEO) {
+                rabbitTemplate.convertAndSend("video-processing-queue", media.getId().toString());
+                rabbitTemplate.convertAndSend("thumbnail-generation-queue", media.getId().toString());
+            } else if (fileType == Media.FileType.IMAGE) {
+                rabbitTemplate.convertAndSend("image-thumbnail-generation-queue", media.getId().toString());
+            } else if (fileType == Media.FileType.PDF) {
+                rabbitTemplate.convertAndSend("pdf-preview-generation-queue", media.getId().toString());
+            }
+
+            logger.info("Media uploaded successfully: {}", fullPath);
+            return ApiResponse.success("File uploaded successfully!", relativePath);
 
         } catch (Exception e) {
             logger.error("Media upload failed: {}", e.getMessage(), e);
@@ -104,9 +117,11 @@ public class MediaService {
                 .orElseThrow(() -> new MediaNotFoundException("Media not found with ID: " + mediaId));
 
         try {
-            File file = new File(media.getStoragePath());
+            // Dynamically construct full file path
+            String fullPath = Paths.get(localStoragePath, media.getStoragePath()).toString();
+            File file = new File(fullPath);
             if (!file.exists()) {
-                throw new MediaNotFoundException("Media file not found on disk: " + media.getStoragePath());
+                throw new MediaNotFoundException("Media file not found on disk: " + fullPath);
             }
 
             InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
@@ -171,10 +186,11 @@ public class MediaService {
                 .orElseThrow(() -> new MediaNotFoundException("Media not found with ID: " + mediaId));
 
         try {
-            // Delete file from storage
-            File file = new File(media.getStoragePath());
+            // Construct full path dynamically
+            String fullPath = Paths.get(localStoragePath, media.getStoragePath()).toString();
+            File file = new File(fullPath);
             if (file.exists() && !file.delete()) {
-                throw new IOException("Failed to delete file: " + media.getStoragePath());
+                throw new IOException("Failed to delete file: " + fullPath);
             }
 
             // Remove from database
@@ -196,7 +212,7 @@ public class MediaService {
                 .fileName(media.getFileName())
                 .fileType(media.getFileType().toString())
                 .fileSize(media.getFileSize())
-                .storagePath(media.getStoragePath()) // Returns file location
+                .storagePath(media.getStoragePath()) // Returns relative path
                 .uploadTimestamp(media.getUploadTimestamp())
                 .build();
     }
@@ -210,5 +226,17 @@ public class MediaService {
         } catch (IllegalArgumentException e) {
             throw new InvalidFileTypeException("Invalid file type! Must be VIDEO, IMAGE, or PDF.");
         }
+    }
+
+    public ResponseEntity<String> streamVideo(UUID mediaId) {
+        Media media = mediaRepository.findById(mediaId)
+                .orElseThrow(() -> new MediaNotFoundException("Media not found with ID: " + mediaId));
+
+        String hlsPath = Paths.get("users", media.getUser().getId().toString(), "videos", "hls",
+                media.getId().toString(), "master.m3u8").toString();
+        String hlsUrl = "http://localhost:8080/" + hlsPath.replace("\\", "/");
+        System.out.println("hlsUrl ==>" + hlsUrl);
+
+        return ResponseEntity.ok(hlsUrl);
     }
 }

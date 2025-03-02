@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: AstroMediaVault
+
+  web:
+    resources:
+      static-locations: "D:/DEV/SpringBoot/MediaStreaming/STORAGE/"
+
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/${POSTGRES_DB:media_db}
@@ -42,4 +47,5 @@ spring:
 
 storage:
   local:
-    path: "D:/DEV/SpringBoot/MediaStreaming/AstroMediaVault/STORAGE/"
+    path: "D:/DEV/SpringBoot/MediaStreaming/STORAGE/"
+  
