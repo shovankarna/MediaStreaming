@@ -3,6 +3,9 @@ package com.astromediavault.AstroMediaVault.controller;
 import com.astromediavault.AstroMediaVault.dto.ApiResponse;
 import com.astromediavault.AstroMediaVault.dto.MediaResponse;
 import com.astromediavault.AstroMediaVault.dto.MediaUploadRequest;
+import com.astromediavault.AstroMediaVault.exception.MediaNotFoundException;
+import com.astromediavault.AstroMediaVault.model.Media;
+import com.astromediavault.AstroMediaVault.repository.MediaRepository;
 import com.astromediavault.AstroMediaVault.service.MediaService;
 import lombok.RequiredArgsConstructor;
 
@@ -11,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -23,7 +27,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MediaController {
 
+    @Value("${server.host}") // Set this in application.yml
+    private String serverHost;
+
     private final MediaService mediaService;
+    private final MediaRepository mediaRepository;
+
     private static final Logger logger = LoggerFactory.getLogger(MediaController.class);
 
     /**
@@ -98,9 +107,17 @@ public class MediaController {
         return ResponseEntity.ok(mediaService.deleteMedia(mediaId));
     }
 
-    @GetMapping("/stream/{mediaId}")
-    public ResponseEntity<String> streamVideo(@PathVariable UUID mediaId) {
-        System.out.println("mediaId ===>" + mediaId);
-        return mediaService.streamVideo(mediaId);
+    /**
+     * Get video streaming URL
+     */
+    @GetMapping("/{mediaId}/stream-url")
+    public ResponseEntity<ApiResponse<String>> getStreamUrl(@PathVariable UUID mediaId) {
+        Media media = mediaRepository.findById(mediaId)
+                .orElseThrow(() -> new MediaNotFoundException("Media not found: " + mediaId));
+
+        String streamUrl = serverHost + "/users/" + media.getUser().getId() +
+                "/videos/hls/" + media.getId() + "/master.m3u8";
+
+        return ResponseEntity.ok(ApiResponse.success("Streaming URL generated successfully", streamUrl));
     }
 }

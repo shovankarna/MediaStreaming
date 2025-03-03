@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Video Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #121212;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .video-container {
+            position: relative;
+            display: inline-block;
+            border: 2px solid white;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        video {
+            width: 100%;
+            max-width: 900px;
+            display: block;
+        }
+        .controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .video-container:hover .controls {
+            opacity: 1;
+        }
+        .btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        .btn:hover {
+            color: #ffcc00;
+        }
+        .quality-selector {
+            background: transparent;
+            color: white;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Advanced Video Player</h2>
+        <div class="video-container">
+            <video id="video" controls></video>
+            <div class="controls">
+                <button class="btn" id="playPause">⏯️</button>
+                <button class="btn" id="rewind">⏪ 10s</button>
+                <button class="btn" id="forward">⏩ 10s</button>
+                <button class="btn" id="speed">⏩ 1x</button>
+                <select id="qualitySelector" class="quality-selector"></select>
+                <button class="btn" id="fullscreen">🔲</button>
+            </div>
+        </div>
+        <p id="status"></p>
+    </div>
+
+    <script>
+        var video = document.getElementById("video");
+        var videoSrc = "[[${streamUrl}]]"; // Thymeleaf injects the streaming URL
+
+        if (Hls.isSupported()) {
+            var hls = new Hls();
+            hls.loadSource(videoSrc);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                video.play();
+                setupQualitySelection(hls);
+            });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = videoSrc;
+            video.addEventListener("loadedmetadata", function () {
+                video.play();
+            });
+        } else {
+            document.getElementById("status").innerText = "Your browser does not support HLS streaming.";
+        }
+
+        function setupQualitySelection(hls) {
+            var qualitySelector = document.getElementById("qualitySelector");
+            hls.levels.forEach((level, index) => {
+                var option = document.createElement("option");
+                option.value = index;
+                option.text = level.height + "p";
+                qualitySelector.appendChild(option);
+            });
+
+            qualitySelector.addEventListener("change", function () {
+                hls.currentLevel = parseInt(this.value);
+            });
+        }
+
+        // Video Player Controls
+        document.getElementById("playPause").addEventListener("click", function () {
+            if (video.paused) {
+                video.play();
+                this.textContent = "⏸️";
+            } else {
+                video.pause();
+                this.textContent = "▶️";
+            }
+        });
+
+        document.getElementById("rewind").addEventListener("click", function () {
+            video.currentTime -= 10;
+        });
+
+        document.getElementById("forward").addEventListener("click", function () {
+            video.currentTime += 10;
+        });
+
+        document.getElementById("speed").addEventListener("click", function () {
+            var speeds = [1, 1.5, 2, 0.5];
+            var currentSpeed = speeds.indexOf(video.playbackRate);
+            var nextSpeed = (currentSpeed + 1) % speeds.length;
+            video.playbackRate = speeds[nextSpeed];
+            this.textContent = "⏩ " + speeds[nextSpeed] + "x";
+        });
+
+        document.getElementById("fullscreen").addEventListener("click", function () {
+            if (video.requestFullscreen) {
+                video.requestFullscreen();
+            } else if (video.mozRequestFullScreen) {
+                video.mozRequestFullScreen();
+            } else if (video.webkitRequestFullscreen) {
+                video.webkitRequestFullscreen();
+            } else if (video.msRequestFullscreen) {
+                video.msRequestFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>
