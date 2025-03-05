@@ -1,160 +1,169 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Video Player</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #121212;
-            color: white;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            margin-top: 50px;
-        }
-        .video-container {
-            position: relative;
-            display: inline-block;
-            border: 2px solid white;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        video {
-            width: 100%;
-            max-width: 900px;
-            display: block;
-        }
-        .controls {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .video-container:hover .controls {
-            opacity: 1;
-        }
-        .btn {
-            background: transparent;
-            border: none;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 0 10px;
-        }
-        .btn:hover {
-            color: #ffcc00;
-        }
-        .quality-selector {
-            background: transparent;
-            color: white;
-            border: none;
-            font-size: 14px;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Advanced Video Player</h2>
-        <div class="video-container">
-            <video id="video" controls></video>
-            <div class="controls">
-                <button class="btn" id="playPause">⏯️</button>
-                <button class="btn" id="rewind">⏪ 10s</button>
-                <button class="btn" id="forward">⏩ 10s</button>
-                <button class="btn" id="speed">⏩ 1x</button>
-                <select id="qualitySelector" class="quality-selector"></select>
-                <button class="btn" id="fullscreen">🔲</button>
-            </div>
-        </div>
-        <p id="status"></p>
-    </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <script>
-        var video = document.getElementById("video");
-        var videoSrc = "[[${streamUrl}]]"; // Thymeleaf injects the streaming URL
+    <!-- Link to Updated CSS File -->
+    <link rel="stylesheet" th:href="@{/css/video-player-style.css}" />
+
+    <!-- Load HLS.js for Streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <!-- Load Icons -->
+    <script
+      type="module"
+      src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"
+    ></script>
+    <script
+      nomodule
+      src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"
+    ></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>Advanced Video Player</title>
+  </head>
+
+  <body>
+    <div class="video-container">
+      <video id="videoElement" disableRemotePlayback></video>
+
+      <!-- Dynamically Inject Video Streaming Source -->
+      <script>
+        var videoElement = document.querySelector("#videoElement");
+        var videoSrc = "[[${streamUrl}]]"; // Injected dynamically by Thymeleaf
 
         if (Hls.isSupported()) {
-            var hls = new Hls();
-            hls.loadSource(videoSrc);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                video.play();
-                setupQualitySelection(hls);
-            });
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            video.src = videoSrc;
-            video.addEventListener("loadedmetadata", function () {
-                video.play();
-            });
-        } else {
-            document.getElementById("status").innerText = "Your browser does not support HLS streaming.";
-        }
+          var hls = new Hls();
+          hls.loadSource(videoSrc);
+          hls.attachMedia(videoElement);
 
-        function setupQualitySelection(hls) {
-            var qualitySelector = document.getElementById("qualitySelector");
+          // Load available resolution levels
+          hls.on(Hls.Events.MANIFEST_PARSED, function () {
+            const qualitySelector = document.getElementById("qualitySelector");
             hls.levels.forEach((level, index) => {
-                var option = document.createElement("option");
-                option.value = index;
-                option.text = level.height + "p";
-                qualitySelector.appendChild(option);
+              const option = document.createElement("li");
+              option.textContent = level.height + "p";
+              option.dataset.value = index;
+              option.onclick = function () {
+                hls.currentLevel = index;
+                document
+                  .querySelectorAll(".quality-menu li")
+                  .forEach((li) => li.classList.remove("quality-active"));
+                option.classList.add("quality-active");
+              };
+              qualitySelector.appendChild(option);
             });
-
-            qualitySelector.addEventListener("change", function () {
-                hls.currentLevel = parseInt(this.value);
-            });
+          });
+        } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+          videoElement.src = videoSrc;
         }
+      </script>
 
-        // Video Player Controls
-        document.getElementById("playPause").addEventListener("click", function () {
-            if (video.paused) {
-                video.play();
-                this.textContent = "⏸️";
-            } else {
-                video.pause();
-                this.textContent = "▶️";
-            }
-        });
+      <span class="custom-loader"></span>
 
-        document.getElementById("rewind").addEventListener("click", function () {
-            video.currentTime -= 10;
-        });
+      <div class="player-state">
+        <span class="state-btn state-backward">
+          <ion-icon name="play-back-outline"></ion-icon>
+          <span class="backward-duration">5</span>
+        </span>
+        <span class="main-state state-btn">
+          <ion-icon name="play-outline"></ion-icon>
+        </span>
+        <span class="state-btn state-forward">
+          <span class="forward-duration">5</span>
+          <ion-icon name="play-forward-outline"></ion-icon>
+        </span>
+      </div>
 
-        document.getElementById("forward").addEventListener("click", function () {
-            video.currentTime += 10;
-        });
+      <div class="controls">
+        <div class="duration">
+          <div class="current-time"></div>
+          <div class="hover-time">
+            <span class="hover-duration"></span>
+          </div>
+          <div class="buffer"></div>
+        </div>
+        <div class="btn-controls">
+          <div class="btn-con">
+            <span class="play-pause control-btn">
+              <ion-icon name="play-outline"></ion-icon>
+            </span>
+            <span class="volume">
+              <span class="mute-unmute control-btn">
+                <ion-icon name="volume-high-outline"></ion-icon>
+              </span>
+              <div class="max-vol">
+                <div class="current-vol"></div>
+              </div>
+            </span>
+            <span class="time-container">
+              <span class="current-duration">0:00</span>
+              <span>/</span>
+              <span class="total-duration">0:00</span>
+            </span>
+          </div>
+          <div class="right-controls">
+            <span class="backward control-btn" title="5 backward">
+              <ion-icon name="play-back-outline"></ion-icon>
+            </span>
+            <span class="forward control-btn" title="5 forward">
+              <ion-icon name="play-forward-outline"></ion-icon>
+            </span>
+            <!-- <span class="mini-player control-btn" style="display: none;">
+              <ion-icon name="albums-outline"></ion-icon>
+            </span> -->
+            <span class="settings control-btn">
+              <span class="setting-btn">
+                <ion-icon name="options-outline"></ion-icon>
+              </span>
+              <ul class="setting-menu">
+                <li data-value="0.25">0.25x</li>
+                <li data-value="0.5">0.5x</li>
+                <li data-value="0.75">0.75x</li>
+                <li data-value="1" class="speed-active">1x</li>
+                <li data-value="1.25">1.25x</li>
+                <li data-value="1.5">1.5x</li>
+                <li data-value="1.75">1.75x</li>
+                <li data-value="2">2x</li>
+              </ul>
+            </span>
+            <span class="quality control-btn">
+              <span class="quality-btn">
+                <ion-icon name="videocam-outline"></ion-icon>
+              </span>
+              <ul id="qualitySelector" class="quality-menu"></ul>
+            </span>
+            <span class="theater-btn control-btn">
+              <span class="theater-default">
+                <ion-icon name="tablet-landscape-outline"></ion-icon>
+              </span>
+              <span class="theater-active">
+                <ion-icon name="tv-outline"></ion-icon>
+              </span>
+            </span>
+            <span class="fullscreen-btn control-btn" title="fullscreen">
+              <span class="full">
+                <ion-icon name="scan-outline"></ion-icon>
+              </span>
+              <span class="contract">
+                <ion-icon name="contract-outline"></ion-icon>
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-        document.getElementById("speed").addEventListener("click", function () {
-            var speeds = [1, 1.5, 2, 0.5];
-            var currentSpeed = speeds.indexOf(video.playbackRate);
-            var nextSpeed = (currentSpeed + 1) % speeds.length;
-            video.playbackRate = speeds[nextSpeed];
-            this.textContent = "⏩ " + speeds[nextSpeed] + "x";
-        });
-
-        document.getElementById("fullscreen").addEventListener("click", function () {
-            if (video.requestFullscreen) {
-                video.requestFullscreen();
-            } else if (video.mozRequestFullScreen) {
-                video.mozRequestFullScreen();
-            } else if (video.webkitRequestFullscreen) {
-                video.webkitRequestFullscreen();
-            } else if (video.msRequestFullscreen) {
-                video.msRequestFullscreen();
-            }
-        });
-    </script>
-</body>
+    <!-- Load Video Player JS File -->
+    <script defer th:src="@{/js/video-player.js}"></script>
+  </body>
 </html>

@@ -1,6 +1,8 @@
 server:
   port: 8080
   host: "http://localhost:8080"
+  tomcat:
+    connection-timeout: 60s
 
 spring:
   application:
