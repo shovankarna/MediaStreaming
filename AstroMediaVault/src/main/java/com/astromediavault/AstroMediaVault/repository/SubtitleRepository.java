@@ -11,4 +11,6 @@ import java.util.UUID;
 @Repository
 public interface SubtitleRepository extends JpaRepository<Subtitle, UUID> {
     List<Subtitle> findByMediaId(UUID mediaId);
+
+    void deleteByMediaId(UUID mediaId);
 }

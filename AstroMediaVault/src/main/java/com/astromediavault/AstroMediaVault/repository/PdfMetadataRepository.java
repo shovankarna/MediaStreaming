@@ -11,4 +11,6 @@ import java.util.UUID;
 @Repository
 public interface PdfMetadataRepository extends JpaRepository<PdfMetadata, UUID> {
     Optional<PdfMetadata> findByMediaId(UUID mediaId);
+
+    void deleteByMediaId(UUID mediaId);
 }

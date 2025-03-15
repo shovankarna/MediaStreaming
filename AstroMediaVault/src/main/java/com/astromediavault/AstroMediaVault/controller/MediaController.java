@@ -3,6 +3,7 @@ package com.astromediavault.AstroMediaVault.controller;
 import com.astromediavault.AstroMediaVault.dto.ApiResponse;
 import com.astromediavault.AstroMediaVault.dto.MediaResponse;
 import com.astromediavault.AstroMediaVault.dto.MediaUploadRequest;
+import com.astromediavault.AstroMediaVault.dto.StreamingResponse;
 import com.astromediavault.AstroMediaVault.exception.MediaNotFoundException;
 import com.astromediavault.AstroMediaVault.model.Media;
 import com.astromediavault.AstroMediaVault.repository.MediaRepository;
@@ -27,7 +28,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MediaController {
 
-    @Value("${server.host}") // Set this in application.yml
+    @Value("${server.host}")
     private String serverHost;
 
     private final MediaService mediaService;
@@ -50,7 +51,9 @@ public class MediaController {
             @RequestParam("title") String title,
             @RequestParam("description") String description,
             @RequestParam("fileType") String fileType,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("subtitle") MultipartFile subtitle,
+            @RequestParam("subtitleLanguage") String subtitleLanguage) {
 
         logger.info("Received request to upload media: userId={}, title={}, fileType={}", userId, title, fileType);
 
@@ -59,6 +62,8 @@ public class MediaController {
         request.setDescription(description);
         request.setFileType(fileType);
         request.setFile(file);
+        request.setSubtitle(subtitle);
+        request.setSubtitleLanguage(subtitleLanguage);
 
         ApiResponse<String> response = mediaService.uploadMedia(request, userId);
         return ResponseEntity.ok(response);
@@ -111,13 +116,7 @@ public class MediaController {
      * Get video streaming URL
      */
     @GetMapping("/{mediaId}/stream-url")
-    public ResponseEntity<ApiResponse<String>> getStreamUrl(@PathVariable UUID mediaId) {
-        Media media = mediaRepository.findById(mediaId)
-                .orElseThrow(() -> new MediaNotFoundException("Media not found: " + mediaId));
-
-        String streamUrl = serverHost + "/users/" + media.getUser().getId() +
-                "/videos/hls/" + media.getId() + "/master.m3u8";
-
-        return ResponseEntity.ok(ApiResponse.success("Streaming URL generated successfully", streamUrl));
+    public ResponseEntity<ApiResponse<StreamingResponse>> getStreamUrl(@PathVariable UUID mediaId) {
+        return ResponseEntity.ok(mediaService.getStreamUrlWithSubtitles(mediaId));
     }
 }

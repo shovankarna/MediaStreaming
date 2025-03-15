@@ -142,6 +142,17 @@
               </span>
               <ul id="qualitySelector" class="quality-menu"></ul>
             </span>
+            <span class="subtitles control-btn">
+              <span class="subtitles-btn">
+                <ion-icon name="text-outline"></ion-icon>
+              </span>
+              <ul id="subtitleSelector" class="subtitles-menu"></ul>
+            </span>
+            <div
+              id="subtitleData"
+              th:data-subtitles="${subtitles != null ? subtitles : '[]'}"
+            ></div>
+
             <span class="theater-btn control-btn">
               <span class="theater-default">
                 <ion-icon name="tablet-landscape-outline"></ion-icon>

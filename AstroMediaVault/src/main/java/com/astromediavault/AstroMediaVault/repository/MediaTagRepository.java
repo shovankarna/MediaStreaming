@@ -11,4 +11,6 @@ import java.util.UUID;
 @Repository
 public interface MediaTagRepository extends JpaRepository<MediaTag, UUID> {
     List<MediaTag> findByMediaId(UUID mediaId);
+
+    void deleteByMediaId(UUID mediaId);
 }

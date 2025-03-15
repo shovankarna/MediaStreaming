@@ -12,4 +12,6 @@ import java.util.UUID;
 public interface PlaybackHistoryRepository extends JpaRepository<PlaybackHistory, UUID> {
     List<PlaybackHistory> findByUserId(UUID userId);
     List<PlaybackHistory> findByMediaId(UUID mediaId);
+
+    void deleteByMediaId(UUID mediaId);
 }

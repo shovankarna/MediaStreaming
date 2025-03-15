@@ -12,4 +12,6 @@ public class MediaUploadRequest {
     private String description;
     private String fileType;
     private MultipartFile file;
+    private MultipartFile subtitle; // Optional subtitle file
+    private String subtitleLanguage; // Optional language for subtitle
 }

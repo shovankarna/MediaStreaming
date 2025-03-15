@@ -483,3 +483,50 @@ body {
   transform: scaleY(1);
   visibility: visible;
 }
+
+.subtitles {
+  position: relative;
+  cursor: pointer;
+}
+
+.subtitles-btn {
+  display: flex;
+}
+
+.subtitles-menu {
+  opacity: 0;
+  visibility: hidden;
+  list-style: none;
+  padding-inline-start: 0;
+  margin-block-start: 0;
+  margin-block-end: 0;
+  position: absolute;
+  bottom: 4.5rem;
+  right: 0;
+  transition: all 0.2s;
+  background: rgba(28, 28, 28, 0.9);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  border-radius: 5px;
+}
+
+.subtitles-menu li {
+  padding: 0.3rem 2rem;
+  margin: 0.5rem;
+  transition: all 0.2s;
+  border-radius: 5px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: white;
+}
+
+.subtitles-menu li:hover {
+  background: rgb(31, 31, 31);
+}
+
+.show-subtitles-menu {
+  opacity: 1;
+  transform: scaleY(1);
+  visibility: visible;
+}

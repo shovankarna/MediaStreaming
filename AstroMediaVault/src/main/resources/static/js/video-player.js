@@ -174,8 +174,102 @@ qualityBtn.addEventListener("click", function (event) {
 
 // Close Quality Menu When Clicking Outside
 document.addEventListener("click", function (event) {
-  if (!qualityMenu.contains(event.target) && !qualityBtn.contains(event.target)) {
+  if (
+    !qualityMenu.contains(event.target) &&
+    !qualityBtn.contains(event.target)
+  ) {
     qualityMenu.classList.remove("show-quality-menu");
+  }
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+  const videoElement = document.querySelector("#videoElement");
+  const subtitleDataElement = document.getElementById("subtitleData");
+  const subtitleSelector = document.getElementById("subtitleSelector");
+  const subtitleButton = document.querySelector(".subtitles-btn");
+
+  let subtitles = [];
+
+  try {
+    subtitles = JSON.parse(subtitleDataElement.getAttribute("data-subtitles"));
+  } catch (e) {
+    console.error("Error parsing subtitle JSON:", e);
+  }
+
+  console.log("Loaded Subtitles:", subtitles);
+
+  // Clear any existing subtitles
+  while (videoElement.firstChild) {
+    videoElement.removeChild(videoElement.firstChild);
+  }
+
+  // Add video source
+  let source = document.createElement("source");
+  source.src = "[[${streamUrl}]]";
+  source.type = "application/x-mpegURL";
+  videoElement.appendChild(source);
+
+  // 🎯 Add subtitles to the video player
+  if (subtitles.length > 0) {
+    subtitles.forEach((sub, index) => {
+      let track = document.createElement("track");
+      track.src = sub.subtitleUrl;
+      track.kind = "subtitles";
+      track.srclang = sub.language.toLowerCase();
+      track.label = sub.language;
+      track.default = index === 0; // Set the first subtitle as default
+      videoElement.appendChild(track);
+    });
+
+    // 🎯 Create Subtitle Dropdown
+    createSubtitleDropdown(subtitles);
+  }
+
+  function createSubtitleDropdown(subtitles) {
+    subtitleSelector.innerHTML = ""; // Clear existing menu
+
+    // "No subtitles" option
+    let noSubtitleOption = document.createElement("li");
+    noSubtitleOption.textContent = "No Subtitles";
+    noSubtitleOption.dataset.value = "off";
+    noSubtitleOption.onclick = function () {
+      let tracks = videoElement.textTracks;
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i].mode = "disabled";
+      }
+    };
+    subtitleSelector.appendChild(noSubtitleOption);
+
+    // Add each subtitle
+    subtitles.forEach((sub, index) => {
+      let option = document.createElement("li");
+      option.textContent = sub.language;
+      option.dataset.value = index;
+      option.onclick = function () {
+        let tracks = videoElement.textTracks;
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].mode =
+            i === parseInt(this.dataset.value) ? "showing" : "disabled";
+        }
+      };
+      subtitleSelector.appendChild(option);
+    });
+
+    // 🎯 Show/hide subtitle menu on button click
+    subtitleButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      subtitleSelector.classList.toggle("show-subtitles-menu");
+    });
+
+    // Close menu when clicking outside
+    document.addEventListener("click", function (event) {
+      if (
+        !subtitleSelector.contains(event.target) &&
+        !subtitleButton.contains(event.target)
+      ) {
+        subtitleSelector.classList.remove("show-subtitles-menu");
+      }
+    });
   }
 });
 
@@ -483,4 +577,57 @@ function handleShorthand(e) {
     default:
       break;
   }
+
+  // function createSubtitleDropdown(subtitles) {
+  //   const controlsContainer = document.querySelector(".right-controls");
+
+  //   // Create dropdown menu
+  //   const subtitleMenu = document.createElement("ul");
+  //   subtitleMenu.id = "subtitleSelector";
+  //   subtitleMenu.classList.add("subtitles-menu");
+
+  //   // "No subtitles" option
+  //   let noSubtitleOption = document.createElement("li");
+  //   noSubtitleOption.textContent = "No Subtitles";
+  //   noSubtitleOption.dataset.value = "off";
+  //   noSubtitleOption.onclick = function () {
+  //     let tracks = document.querySelectorAll("track");
+  //     tracks.forEach((track) => (track.mode = "disabled"));
+  //   };
+  //   subtitleMenu.appendChild(noSubtitleOption);
+
+  //   // Add each subtitle
+  //   subtitles.forEach((sub, index) => {
+  //     let option = document.createElement("li");
+  //     option.textContent = sub.language;
+  //     option.dataset.value = index;
+  //     option.onclick = function () {
+  //       let tracks = document.querySelectorAll("track");
+  //       tracks.forEach((track, i) => {
+  //         track.mode =
+  //           i === parseInt(this.dataset.value) ? "showing" : "disabled";
+  //       });
+  //     };
+  //     subtitleMenu.appendChild(option);
+  //   });
+
+  //   // Append menu to controls
+  //   const subtitleButton = document.querySelector(".subtitles-btn");
+  //   subtitleButton.addEventListener("click", function (event) {
+  //     event.stopPropagation();
+  //     subtitleMenu.classList.toggle("show-subtitles-menu");
+  //   });
+
+  //   // Close menu when clicking outside
+  //   document.addEventListener("click", function (event) {
+  //     if (
+  //       !subtitleMenu.contains(event.target) &&
+  //       !subtitleButton.contains(event.target)
+  //     ) {
+  //       subtitleMenu.classList.remove("show-subtitles-menu");
+  //     }
+  //   });
+
+  //   controlsContainer.appendChild(subtitleMenu);
+  // }
 }

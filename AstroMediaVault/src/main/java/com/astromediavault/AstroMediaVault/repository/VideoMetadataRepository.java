@@ -11,4 +11,6 @@ import java.util.UUID;
 @Repository
 public interface VideoMetadataRepository extends JpaRepository<VideoMetadata, UUID> {
     Optional<VideoMetadata> findByMediaId(UUID mediaId);
+
+    void deleteByMediaId(UUID mediaId);
 }

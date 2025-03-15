@@ -11,4 +11,6 @@ import java.util.UUID;
 @Repository
 public interface ImageMetadataRepository extends JpaRepository<ImageMetadata, UUID> {
     Optional<ImageMetadata> findByMediaId(UUID mediaId);
+
+    void deleteByMediaId(UUID mediaId);
 }
