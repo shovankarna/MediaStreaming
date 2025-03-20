@@ -7,11 +7,15 @@ import com.astromediavault.AstroMediaVault.repository.MediaRepository;
 import com.astromediavault.AstroMediaVault.service.SubtitleService;
 
 import lombok.RequiredArgsConstructor;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,32 +31,36 @@ public class VideoPlayerController {
     @Value("${server.host}") // Backend URL from application.yml
     private String serverHost;
 
+    private static final Logger logger = LoggerFactory.getLogger(VideoPlayerController.class);
+
     @GetMapping("/{mediaId}")
     public String getVideoPlayer(@PathVariable UUID mediaId, Model model) {
         Media media = mediaRepository.findById(mediaId)
                 .orElseThrow(() -> new MediaNotFoundException("Media not found: " + mediaId));
 
-        String streamUrl = serverHost + "/users/" + media.getUser().getId() +
-                "/videos/hls/" + media.getId() + "/master.m3u8";
+        // ✅ OS-independent HLS URL
+        String streamUrl = Paths.get("users", media.getUser().getId().toString(), "videos", "hls",
+                media.getId().toString(), "master.m3u8")
+                .toString()
+                .replace("\\", "/"); // Ensure proper URL format
 
-        // Fetch subtitles
+        streamUrl = serverHost + "/" + streamUrl;
+
+        // ✅ Fetch subtitles (ensure non-null)
         List<SubtitleResponse> subtitles = subtitleService.getSubtitlesForMedia(media.getId());
         if (subtitles == null) {
-            subtitles = new ArrayList<>(); // Ensure it's always a list, never null
+            subtitles = new ArrayList<>();
         }
 
         // 🔴 Debugging Logs
-        System.out.println("Stream URL: " + streamUrl);
-        subtitles.forEach(subtitle -> {
-            System.out.println("Subtitle ID: " + subtitle.getId());
-            System.out.println("Subtitle Language: " + subtitle.getLanguage());
-            System.out.println("Subtitle URL: " + subtitle.getSubtitleUrl());
-        });
+        logger.info("Stream URL: {}", streamUrl);
+        subtitles.forEach(subtitle -> logger.info("Subtitle: ID={} Language={} URL={}",
+                subtitle.getId(), subtitle.getLanguage(), subtitle.getSubtitleUrl()));
 
+        // ✅ Add data to model
         model.addAttribute("streamUrl", streamUrl);
-        model.addAttribute("subtitles", subtitles); // Ensure it's always passed
+        model.addAttribute("subtitles", subtitles);
 
-        return "video-player";
+        return "video-player"; // 🎥 Thymeleaf template
     }
-
 }

@@ -6,6 +6,9 @@ import lombok.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.time.Instant;
 
 @Getter
@@ -38,29 +41,36 @@ public class Media {
     private String storagePath;
 
     @OneToMany(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Subtitle> subtitles = new ArrayList<>();
+    @JsonIgnore
+    private List<Subtitle> subtitles;
 
     @OneToMany(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<TranscodedVideo> transcodedVideos = new ArrayList<>();
+    @JsonIgnore
+    private List<TranscodedVideo> transcodedVideos;
 
     @OneToMany(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<VideoSegment> videoSegments = new ArrayList<>();
+    @JsonIgnore
+    private List<VideoSegment> videoSegments;
 
     @OneToMany(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<PlaybackHistory> playbackHistories = new ArrayList<>();
+    @JsonIgnore
+    private List<PlaybackHistory> playbackHistories;
 
     @OneToMany(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<MediaTag> mediaTags = new ArrayList<>();
+    @JsonIgnore
+    private List<MediaTag> mediaTags;
 
     @OneToOne(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
     private VideoMetadata videoMetadata;
 
     @OneToOne(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
     private ImageMetadata imageMetadata;
 
     @OneToOne(mappedBy = "media", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
     private PdfMetadata pdfMetadata;
-
     @Column(nullable = false, updatable = false)
     private Instant uploadTimestamp = Instant.now();
 

@@ -142,6 +142,9 @@ public class VideoProcessingConsumer {
      * Save transcoded video details
      */
     private void saveTranscodedVideo(Media media, String hlsDirectory, VideoMetadata metadata) {
+        String relativeHlsDirectory = Paths.get("users", media.getUser().getId().toString(), "videos", "hls",
+                media.getId().toString()).toString(); // ✅ Store as relative path
+
         List<String> resolutions = List.of("640x360", "1280x720", "1920x1080");
         List<String> bitrates = List.of("800k", "1400k", "2800k");
 
@@ -150,7 +153,8 @@ public class VideoProcessingConsumer {
             transcodedVideo.setMedia(media);
             transcodedVideo.setResolution(resolutions.get(i));
             transcodedVideo.setBitrate(Integer.parseInt(bitrates.get(i).replace("k", "000")));
-            transcodedVideo.setFilePath(hlsDirectory + "/stream_" + i + ".m3u8");
+            transcodedVideo.setFilePath(Paths.get(relativeHlsDirectory, "stream_" + i + ".m3u8").toString()); // ✅ Store
+                                                                                                              // relative
             transcodedVideoRepository.save(transcodedVideo);
         }
     }
@@ -159,15 +163,22 @@ public class VideoProcessingConsumer {
      * Save video segments in database
      */
     private void saveVideoSegments(Media media, String hlsDirectory) {
+        String relativeHlsDirectory = Paths.get("users", media.getUser().getId().toString(), "videos", "hls",
+                media.getId().toString()).toString(); // ✅ Store as relative path
+
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 10; j++) { // Assuming 10 segments per resolution
                 VideoSegment segment = new VideoSegment();
                 segment.setMedia(media);
                 segment.setSegmentIndex(j);
                 segment.setResolution(i == 0 ? "360p" : i == 1 ? "720p" : "1080p");
-                segment.setSegmentPath(hlsDirectory + "/stream_" + i + "_" + String.format("%03d.ts", j));
+                segment.setSegmentPath(
+                        Paths.get(relativeHlsDirectory, "stream_" + i + "_" + String.format("%03d.ts", j)).toString()); // ✅
+                                                                                                                        // Store
+                                                                                                                        // relative
                 videoSegmentRepository.save(segment);
             }
         }
     }
+
 }
