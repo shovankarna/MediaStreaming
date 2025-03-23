@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PDF Viewer</title>
+    <link rel="stylesheet" th:href="@{/css/pdf-viewer-style.css}" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div id="toolbar">
+      <button class="toolbar-button" onclick="zoomOut()" title="Zoom Out">
+        <i class="fas fa-search-minus"></i>
+      </button>
+      <button class="toolbar-button" onclick="zoomIn()" title="Zoom In">
+        <i class="fas fa-search-plus"></i>
+      </button>
+      <button
+        class="toolbar-button"
+        onclick="downloadPdf()"
+        title="Download PDF"
+      >
+        <i class="fas fa-download"></i>
+      </button>
+      <button
+        class="toolbar-button"
+        onclick="toggleFullscreen()"
+        title="Fullscreen"
+      >
+        <i class="fas fa-expand" id="fullscreen-icon"></i>
+      </button>
+      <button
+        class="toolbar-button"
+        onclick="toggleNightMode()"
+        title="Night Mode"
+      >
+        <i class="fas fa-moon" id="night-mode-icon"></i>
+      </button>
+      <button id="scrollToTopBtn" title="Scroll to Top" onclick="scrollToTop()">
+        <i class="fas fa-arrow-up"></i>
+      </button>
+
+      <div class="info-display" id="zoom-display">Zoom: 150%</div>
+      <div class="info-display" id="page-display">Page: 1 / 1</div>
+      <div class="go-to-input">
+        <label for="pageInput">Go to:</label>
+        <input
+          type="number"
+          id="pageInput"
+          min="1"
+          onchange="goToPage(this.value)"
+        />
+      </div>
+    </div>
+
+    <div id="viewerContainer"></div>
+
+    <!-- Load PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- ✅ Inject pdfUrl safely here -->
+    <script th:inline="javascript">
+      const pdfUrl = /*[[${pdfUrl}]]*/ "";
+    </script>
+
+    <!-- Static JS file -->
+    <script defer th:src="@{/js/pdf-viewer.js}"></script>
+  </body>
+</html>

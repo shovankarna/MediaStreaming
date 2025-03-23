@@ -132,6 +132,30 @@ public class PDFService {
     }
 
     /**
+     * Stream the original PDF file (inline)
+     */
+    public ResponseEntity<Resource> streamPdf(UUID mediaId) throws IOException {
+        Media media = mediaRepository.findById(mediaId)
+                .orElseThrow(() -> new MediaNotFoundException("Media not found with ID: " + mediaId));
+
+        if (media.getFileType() != Media.FileType.PDF) {
+            throw new InvalidFileTypeException("Streaming is only available for PDFs.");
+        }
+
+        String fullPath = Paths.get(localStoragePath, media.getStoragePath()).toString();
+        File file = new File(fullPath);
+        if (!file.exists()) {
+            throw new MediaNotFoundException("PDF file not found on disk: " + fullPath);
+        }
+
+        InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + media.getFileName() + "\"")
+                .body(resource);
+    }
+
+    /**
      * Delete all PDF-related files and metadata
      */
     public void deletePdfFiles(UUID mediaId) {

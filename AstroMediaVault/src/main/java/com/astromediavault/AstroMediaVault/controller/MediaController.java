@@ -8,6 +8,8 @@ import com.astromediavault.AstroMediaVault.exception.MediaNotFoundException;
 import com.astromediavault.AstroMediaVault.model.Media;
 import com.astromediavault.AstroMediaVault.repository.MediaRepository;
 import com.astromediavault.AstroMediaVault.service.MediaService;
+import com.astromediavault.AstroMediaVault.service.PDFService;
+
 import lombok.RequiredArgsConstructor;
 
 import org.slf4j.Logger;
@@ -20,6 +22,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,6 +36,7 @@ public class MediaController {
 
     private final MediaService mediaService;
     private final MediaRepository mediaRepository;
+    private final PDFService pdfService;
 
     private static final Logger logger = LoggerFactory.getLogger(MediaController.class);
 
@@ -115,8 +119,13 @@ public class MediaController {
     /**
      * Get video streaming URL
      */
-    @GetMapping("/{mediaId}/stream-url")
+    @GetMapping("/{mediaId}/video-stream-url")
     public ResponseEntity<ApiResponse<StreamingResponse>> getStreamUrl(@PathVariable UUID mediaId) {
         return ResponseEntity.ok(mediaService.getStreamUrlWithSubtitles(mediaId));
+    }
+
+    @GetMapping("/{mediaId}/pdf-stream")
+    public ResponseEntity<Resource> streamPdf(@PathVariable UUID mediaId) throws IOException {
+        return pdfService.streamPdf(mediaId);
     }
 }
