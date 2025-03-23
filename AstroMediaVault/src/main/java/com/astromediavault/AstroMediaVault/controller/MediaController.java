@@ -52,8 +52,8 @@ public class MediaController {
             @RequestParam("description") String description,
             @RequestParam("fileType") String fileType,
             @RequestParam("file") MultipartFile file,
-            @RequestParam("subtitle") MultipartFile subtitle,
-            @RequestParam("subtitleLanguage") String subtitleLanguage) {
+            @RequestParam(value = "subtitle", required = false) MultipartFile subtitle,
+            @RequestParam(value = "subtitleLanguage", required = false) String subtitleLanguage) {
 
         logger.info("Received request to upload media: userId={}, title={}, fileType={}", userId, title, fileType);
 

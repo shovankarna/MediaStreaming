@@ -21,7 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -40,6 +42,7 @@ public class MediaService {
     private final RabbitTemplate rabbitTemplate;
     private final VideoService videoService;
     private final SubtitleService subtitleService;
+    private final PDFService pdfService;
 
     private static final Logger logger = LoggerFactory.getLogger(MediaService.class);
 
@@ -57,17 +60,14 @@ public class MediaService {
             Media.FileType fileType = validateFileType(request.getFileType());
             MultipartFile file = request.getFile();
             String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
-
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new MediaNotFoundException("User not found with ID: " + userId));
-
             String userBaseDir = Paths.get("users", userId.toString()).toString();
             String mediaFolder = switch (fileType) {
                 case VIDEO -> Paths.get(userBaseDir, "videos", "original").toString();
                 case IMAGE -> Paths.get(userBaseDir, "images", "original").toString();
                 case PDF -> Paths.get(userBaseDir, "pdfs", "original").toString();
             };
-
             File directory = new File(Paths.get(localStoragePath, mediaFolder).toString());
             if (!directory.exists() && !directory.mkdirs()) {
                 throw new IOException("Failed to create directory: " + mediaFolder);
@@ -75,8 +75,8 @@ public class MediaService {
 
             String relativePath = Paths.get(mediaFolder, fileName).toString();
             String fullPath = Paths.get(localStoragePath, relativePath).toString();
-            file.transferTo(new File(fullPath));
 
+            // Create the media entity first
             Media media = new Media();
             media.setUser(user);
             media.setFileName(file.getOriginalFilename());
@@ -85,22 +85,37 @@ public class MediaService {
             media.setStoragePath(relativePath);
             media = mediaRepository.save(media);
 
-            System.out.println("media.getSubtitles() ===>" + media.getSubtitles());
-            System.out.println("request.getSubtitle().isEmpty() ===>" + request.getSubtitle().isEmpty());
-
-            if (fileType == Media.FileType.VIDEO && request.getSubtitle() != null && !request.getSubtitle().isEmpty()) {
-                subtitleService.saveSubtitle(request.getSubtitle(), request.getSubtitleLanguage(), media);
+            // Process PDF before saving the file for PDF files
+            if (fileType == Media.FileType.PDF) {
+                pdfService.processPdfUpload(media, file);
             }
 
-            if (fileType == Media.FileType.VIDEO) {
-                videoService.processVideoUpload(media, request);
-            } else if (fileType == Media.FileType.PDF) {
+            // Now save the actual file - using InputStream approach to avoid file not found
+            // errors
+            try (InputStream inputStream = file.getInputStream();
+                    FileOutputStream outputStream = new FileOutputStream(new File(fullPath))) {
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+            }
+
+            // Queue PDF preview generation
+            if (fileType == Media.FileType.PDF) {
                 rabbitTemplate.convertAndSend("pdf-preview-generation-queue", media.getId().toString());
+            }
+
+            // Handle Video Upload
+            if (fileType == Media.FileType.VIDEO) {
+                if (request.getSubtitle() != null && !request.getSubtitle().isEmpty()) {
+                    subtitleService.saveSubtitle(request.getSubtitle(), request.getSubtitleLanguage(), media);
+                }
+                videoService.processVideoUpload(media, request);
             }
 
             logger.info("Media uploaded successfully: {}", fullPath);
             return ApiResponse.success("File uploaded successfully!", relativePath);
-
         } catch (Exception e) {
             logger.error("Media upload failed: {}", e.getMessage(), e);
             return ApiResponse.error("Failed to upload media.");
@@ -115,19 +130,11 @@ public class MediaService {
                 .orElseThrow(() -> new MediaNotFoundException("Media not found with ID: " + mediaId));
 
         try {
-            String fullPath = Paths.get(localStoragePath, media.getStoragePath()).toString();
-            File file = new File(fullPath);
-            if (!file.exists()) {
-                throw new MediaNotFoundException("Media file not found on disk: " + fullPath);
-            }
-
-            InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
-
-            return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + media.getFileName() + "\"")
-                    .body(resource);
-
+            return switch (media.getFileType()) {
+                case PDF -> pdfService.downloadPdf(mediaId);
+                case VIDEO -> videoService.downloadVideo(mediaId);
+                case IMAGE -> videoService.downloadVideo(mediaId);
+            };
         } catch (Exception e) {
             throw new RuntimeException("Error downloading media file", e);
         }
@@ -189,6 +196,8 @@ public class MediaService {
             if (media.getFileType() == Media.FileType.VIDEO) {
                 videoService.deleteVideoFiles(mediaId);
                 subtitleService.deleteSubtitlesForMedia(mediaId);
+            } else if (media.getFileType() == Media.FileType.PDF) {
+                pdfService.deletePdfFiles(mediaId);
             } else {
                 deleteLocalFile(basePath.resolve(media.getStoragePath()).toString());
             }

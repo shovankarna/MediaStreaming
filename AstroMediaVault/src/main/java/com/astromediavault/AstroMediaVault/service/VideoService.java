@@ -1,6 +1,7 @@
 package com.astromediavault.AstroMediaVault.service;
 
 import com.astromediavault.AstroMediaVault.dto.MediaUploadRequest;
+import com.astromediavault.AstroMediaVault.exception.InvalidFileTypeException;
 import com.astromediavault.AstroMediaVault.exception.MediaNotFoundException;
 import com.astromediavault.AstroMediaVault.model.Media;
 import com.astromediavault.AstroMediaVault.model.TranscodedVideo;
@@ -16,9 +17,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
 
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,6 +76,30 @@ public class VideoService {
         String hlsPath = Paths.get("users", media.getUser().getId().toString(), "videos", "hls",
                 media.getId().toString(), "master.m3u8").toString();
         return serverHost + "/" + hlsPath.replace("\\", "/");
+    }
+
+    /**
+     * DOWNLOAD Video File
+     */
+    public ResponseEntity<Resource> downloadVideo(UUID mediaId) throws IOException {
+        Media media = mediaRepository.findById(mediaId)
+                .orElseThrow(() -> new MediaNotFoundException("Media not found with ID: " + mediaId));
+
+        if (media.getFileType() != Media.FileType.VIDEO) {
+            throw new InvalidFileTypeException("Download is only available for video files.");
+        }
+
+        String fullPath = Paths.get(localStoragePath, media.getStoragePath()).toString();
+        File file = new File(fullPath);
+        if (!file.exists()) {
+            throw new MediaNotFoundException("Original video file not found at: " + fullPath);
+        }
+
+        InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + media.getFileName() + "\"")
+                .body(resource);
     }
 
     /**

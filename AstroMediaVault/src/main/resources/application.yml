@@ -51,4 +51,12 @@ spring:
 storage:
   local:
     path: "D:/DEV/SpringBoot/MediaStreaming/STORAGE/"
+
+media:
+  pdf:
+    max-size-bytes: 115343360 #110MB
+  video:
+    max-size-bytes: 115343360 #110MB
+  img: 
+    max-size-bytes: 20971520 #20MB
   

@@ -28,6 +28,15 @@ public class RabbitMQConfig {
     }
 
     /**
+     * Creates a preview for PDF (1st page) generation tasks.
+     * These jobs will extract a preview image from pdfs.
+     */
+    @Bean
+    public Queue pdfPreviewGenerationQueue() {
+        return new Queue("pdf-preview-generation-queue", true);
+    }
+
+    /**
      * Establishes a connection to RabbitMQ.
      */
     @Bean
