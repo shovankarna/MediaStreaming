@@ -11,6 +11,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -36,6 +37,7 @@ public class PDFService {
     private static final Logger logger = LoggerFactory.getLogger(PDFService.class);
     private final MediaRepository mediaRepository;
     private final PdfMetadataRepository pdfMetadataRepository;
+    private final RabbitTemplate rabbitTemplate;
 
     @Value("${storage.local.path}")
     private String localStoragePath;
@@ -46,35 +48,38 @@ public class PDFService {
     /**
      * Handles PDF Upload, Validation, Metadata Extraction, and Saving PDF Metadata
      */
-    public void processPdfUpload(Media media, MultipartFile file) throws IOException {
+    public void processPdfUpload(Media media, MultipartFile file, String fullPath) throws IOException {
         if (file.isEmpty()) {
             throw new InvalidFileTypeException("Uploaded file is empty");
         }
         if (file.getSize() > maxPdfFileSize) {
             throw new InvalidFileTypeException("PDF file exceeds maximum allowed size of " + maxPdfFileSize + " bytes");
         }
+
         logger.debug("Attempting to load PDF: originalFilename={}, size={}", file.getOriginalFilename(),
                 file.getSize());
 
-        // Instead of transferring to a temporary file, read the input stream directly
-        try (InputStream inputStream = file.getInputStream();
-                PDDocument document = PDDocument.load(inputStream)) {
+        try (InputStream inputStream = file.getInputStream()) {
+            Files.copy(inputStream, Paths.get(fullPath)); // ✅ Save the file
 
-            if (document.isEncrypted()) {
-                throw new InvalidFileTypeException("Encrypted PDF files are not supported");
+            try (PDDocument document = PDDocument.load(new File(fullPath))) {
+                if (document.isEncrypted()) {
+                    throw new InvalidFileTypeException("Encrypted PDF files are not supported");
+                }
+
+                PDDocumentInformation info = document.getDocumentInformation();
+                int pageCount = document.getNumberOfPages();
+
+                PdfMetadata pdfMetadata = new PdfMetadata();
+                pdfMetadata.setMedia(media);
+                pdfMetadata.setTitle(info.getTitle());
+                pdfMetadata.setAuthor(info.getAuthor());
+                pdfMetadata.setPageCount(pageCount);
+                pdfMetadataRepository.save(pdfMetadata);
+
+                logger.info("PDF metadata extracted and saved for mediaId={}", media.getId());
+                rabbitTemplate.convertAndSend("pdf-preview-generation-queue", media.getId().toString());
             }
-            // Extract metadata
-            PDDocumentInformation info = document.getDocumentInformation();
-            int pageCount = document.getNumberOfPages();
-            String title = info.getTitle();
-            String author = info.getAuthor();
-            PdfMetadata pdfMetadata = new PdfMetadata();
-            pdfMetadata.setMedia(media);
-            pdfMetadata.setTitle(title);
-            pdfMetadata.setAuthor(author);
-            pdfMetadata.setPageCount(pageCount);
-            pdfMetadataRepository.save(pdfMetadata);
-            logger.info("PDF metadata extracted and saved for mediaId={}", media.getId());
         } catch (IOException e) {
             logger.error("Failed to process PDF file: {}", e.getMessage(), e);
             throw new InvalidFileTypeException("Uploaded file is not a valid PDF");

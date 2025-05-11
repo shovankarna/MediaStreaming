@@ -4,9 +4,8 @@ import com.astromediavault.AstroMediaVault.dto.ApiResponse;
 import com.astromediavault.AstroMediaVault.dto.MediaResponse;
 import com.astromediavault.AstroMediaVault.dto.MediaUploadRequest;
 import com.astromediavault.AstroMediaVault.dto.StreamingResponse;
-import com.astromediavault.AstroMediaVault.exception.MediaNotFoundException;
-import com.astromediavault.AstroMediaVault.model.Media;
 import com.astromediavault.AstroMediaVault.repository.MediaRepository;
+import com.astromediavault.AstroMediaVault.service.ImageService;
 import com.astromediavault.AstroMediaVault.service.MediaService;
 import com.astromediavault.AstroMediaVault.service.PDFService;
 
@@ -19,9 +18,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
@@ -37,6 +33,7 @@ public class MediaController {
     private final MediaService mediaService;
     private final MediaRepository mediaRepository;
     private final PDFService pdfService;
+    private final ImageService imageService;
 
     private static final Logger logger = LoggerFactory.getLogger(MediaController.class);
 
@@ -57,7 +54,8 @@ public class MediaController {
             @RequestParam("fileType") String fileType,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "subtitle", required = false) MultipartFile subtitle,
-            @RequestParam(value = "subtitleLanguage", required = false) String subtitleLanguage) {
+            @RequestParam(value = "subtitleLanguage", required = false) String subtitleLanguage,
+            @RequestParam(value = "generateImgResolution", required = false) String generateImgResolution) {
 
         logger.info("Received request to upload media: userId={}, title={}, fileType={}", userId, title, fileType);
 
@@ -68,6 +66,7 @@ public class MediaController {
         request.setFile(file);
         request.setSubtitle(subtitle);
         request.setSubtitleLanguage(subtitleLanguage);
+        request.setGenerateImgRes(Boolean.parseBoolean(generateImgResolution));
 
         ApiResponse<String> response = mediaService.uploadMedia(request, userId);
         return ResponseEntity.ok(response);
@@ -127,5 +126,14 @@ public class MediaController {
     @GetMapping("/{mediaId}/pdf-stream")
     public ResponseEntity<Resource> streamPdf(@PathVariable UUID mediaId) throws IOException {
         return pdfService.streamPdf(mediaId);
+    }
+
+    @GetMapping("/{mediaId}/image-stream")
+    public ResponseEntity<Resource> streamImage(
+            @PathVariable UUID mediaId,
+            @RequestParam(value = "resolution", required = false) String resolution,
+            @RequestParam(value = "format", defaultValue = "webp") String format,
+            @RequestParam(value = "download", defaultValue = "false") boolean download) {
+        return imageService.streamImage(mediaId, resolution, format, download);
     }
 }

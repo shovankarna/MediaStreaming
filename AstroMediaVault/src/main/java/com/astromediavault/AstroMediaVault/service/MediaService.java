@@ -27,6 +27,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +44,7 @@ public class MediaService {
     private final VideoService videoService;
     private final SubtitleService subtitleService;
     private final PDFService pdfService;
+    private final ImageService imageService;
 
     private static final Logger logger = LoggerFactory.getLogger(MediaService.class);
 
@@ -76,46 +78,32 @@ public class MediaService {
             String relativePath = Paths.get(mediaFolder, fileName).toString();
             String fullPath = Paths.get(localStoragePath, relativePath).toString();
 
-            // Create the media entity first
             Media media = new Media();
             media.setUser(user);
             media.setFileName(file.getOriginalFilename());
             media.setFileSize(file.getSize());
             media.setFileType(fileType);
             media.setStoragePath(relativePath);
+            media.setUploadTimestamp(Instant.now());
             media = mediaRepository.save(media);
 
-            // Process PDF before saving the file for PDF files
             if (fileType == Media.FileType.PDF) {
-                pdfService.processPdfUpload(media, file);
+                pdfService.processPdfUpload(media, file, fullPath);
             }
 
-            // Now save the actual file - using InputStream approach to avoid file not found
-            // errors
-            try (InputStream inputStream = file.getInputStream();
-                    FileOutputStream outputStream = new FileOutputStream(new File(fullPath))) {
-                byte[] buffer = new byte[1024];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                }
-            }
-
-            // Queue PDF preview generation
-            if (fileType == Media.FileType.PDF) {
-                rabbitTemplate.convertAndSend("pdf-preview-generation-queue", media.getId().toString());
-            }
-
-            // Handle Video Upload
             if (fileType == Media.FileType.VIDEO) {
                 if (request.getSubtitle() != null && !request.getSubtitle().isEmpty()) {
                     subtitleService.saveSubtitle(request.getSubtitle(), request.getSubtitleLanguage(), media);
                 }
-                videoService.processVideoUpload(media, request);
+                videoService.processVideoUpload(media, request, fullPath);
             }
 
-            logger.info("Media uploaded successfully: {}", fullPath);
-            return ApiResponse.success("File uploaded successfully!", relativePath);
+            if (fileType == Media.FileType.IMAGE) {
+                imageService.processImageUpload(media, request, fullPath);
+            }
+
+            logger.info("Media uploaded successfully: {}", media.getStoragePath());
+            return ApiResponse.success("File uploaded successfully!", media.getStoragePath());
         } catch (Exception e) {
             logger.error("Media upload failed: {}", e.getMessage(), e);
             return ApiResponse.error("Failed to upload media.");
@@ -133,7 +121,7 @@ public class MediaService {
             return switch (media.getFileType()) {
                 case PDF -> pdfService.downloadPdf(mediaId);
                 case VIDEO -> videoService.downloadVideo(mediaId);
-                case IMAGE -> videoService.downloadVideo(mediaId);
+                case IMAGE -> imageService.downloadImage(mediaId);
             };
         } catch (Exception e) {
             throw new RuntimeException("Error downloading media file", e);
@@ -198,6 +186,8 @@ public class MediaService {
                 subtitleService.deleteSubtitlesForMedia(mediaId);
             } else if (media.getFileType() == Media.FileType.PDF) {
                 pdfService.deletePdfFiles(mediaId);
+            } else if (media.getFileType() == Media.FileType.IMAGE) {
+                imageService.deleteImageFiles(mediaId);
             } else {
                 deleteLocalFile(basePath.resolve(media.getStoragePath()).toString());
             }

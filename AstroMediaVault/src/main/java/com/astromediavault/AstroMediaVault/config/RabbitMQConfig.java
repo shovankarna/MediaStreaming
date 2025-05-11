@@ -9,6 +9,15 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class RabbitMQConfig {
+
+    /**
+     * Establishes a connection to RabbitMQ.
+     */
+    @Bean
+    public ConnectionFactory connectionFactory() {
+        return new CachingConnectionFactory("localhost");
+    }
+    
     /**
      * Creates a queue for video processing tasks.
      * These jobs will transcode videos into multiple resolutions.
@@ -37,18 +46,15 @@ public class RabbitMQConfig {
     }
 
     /**
-     * Establishes a connection to RabbitMQ.
-     */
-    @Bean
-    public ConnectionFactory connectionFactory() {
-        return new CachingConnectionFactory("localhost");
-    }
-
-    /**
      * Creates a RabbitTemplate for sending messages to queues.
      */
     @Bean
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
         return new RabbitTemplate(connectionFactory);
+    }
+
+    @Bean
+    public Queue imageResolutionGenerationQueue() {
+        return new Queue("image-resolution-generation-queue", true);
     }
 }

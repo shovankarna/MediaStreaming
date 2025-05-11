@@ -14,4 +14,5 @@ public class MediaUploadRequest {
     private MultipartFile file;
     private MultipartFile subtitle; // Optional subtitle file
     private String subtitleLanguage; // Optional language for subtitle
+    private boolean generateImgRes;
 }

@@ -28,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -55,14 +56,18 @@ public class VideoService {
     /**
      * Process Video Upload (Send Jobs to RabbitMQ)
      */
-    public void processVideoUpload(Media media, MediaUploadRequest request) {
-        // 🔴 Ensure subtitle handling is included, since it was in MediaService before
+    public void processVideoUpload(Media media, MediaUploadRequest request, String fullPath) {
+        try (InputStream inputStream = request.getFile().getInputStream()) {
+            Files.copy(inputStream, Paths.get(fullPath)); // ✅ Save the video
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to store video file: " + e.getMessage(), e);
+        }
+
         if (request.getSubtitle() != null && !request.getSubtitle().isEmpty()) {
             logger.info("Subtitle provided with video. Processing...");
             rabbitTemplate.convertAndSend("subtitle-processing-queue", media.getId().toString());
         }
 
-        // 🔴 Process video for transcoding and thumbnail generation
         rabbitTemplate.convertAndSend("video-processing-queue", media.getId().toString());
         rabbitTemplate.convertAndSend("thumbnail-generation-queue", media.getId().toString());
 
