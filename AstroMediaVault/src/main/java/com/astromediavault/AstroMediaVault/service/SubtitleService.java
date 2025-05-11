@@ -36,27 +36,34 @@ public class SubtitleService {
      * Save Subtitle File
      */
     public void saveSubtitle(MultipartFile subtitleFile, String language, Media media) throws IOException {
-        String subtitleFileName = UUID.randomUUID() + "_" + subtitleFile.getOriginalFilename();
-        String subtitleFolder = Paths.get("users", media.getUser().getId().toString(), "subtitles").toString();
+        // Use UUID_filename format
+        String subtitleFileName = media.getId() + "_" + subtitleFile.getOriginalFilename();
+
+        // New subtitle folder inside the video folder using mediaId
+        String subtitleFolder = Paths.get(
+                "users",
+                media.getUser().getId().toString(),
+                "videos",
+                "subtitles").toString();
 
         File directory = new File(Paths.get(localStoragePath, subtitleFolder).toString());
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IOException("Failed to create subtitle directory: " + subtitleFolder);
         }
 
-        // Save subtitle file
+        // Save subtitle file to the newly structured path
         String subtitlePath = Paths.get(subtitleFolder, subtitleFileName).toString();
         File localSubtitleFile = new File(Paths.get(localStoragePath, subtitlePath).toString());
         subtitleFile.transferTo(localSubtitleFile);
 
-        // Save subtitle metadata
+        // Save subtitle metadata to DB
         Subtitle subtitle = new Subtitle();
         subtitle.setMedia(media);
         subtitle.setLanguage(language);
         subtitle.setSubtitlePath(subtitlePath);
         subtitleRepository.save(subtitle);
 
-        logger.info("Subtitle uploaded successfully: {}", subtitlePath);
+        logger.info("Subtitle uploaded and saved under video folder: {}", subtitlePath);
     }
 
     /**

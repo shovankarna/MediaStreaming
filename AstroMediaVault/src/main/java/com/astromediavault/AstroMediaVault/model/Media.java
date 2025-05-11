@@ -30,6 +30,9 @@ public class Media {
     @Column(nullable = false)
     private String fileName;
 
+    @Column(nullable = false)
+    private String originalFileName;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private FileType fileType;

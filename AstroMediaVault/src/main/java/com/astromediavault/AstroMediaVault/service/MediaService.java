@@ -80,7 +80,8 @@ public class MediaService {
 
             Media media = new Media();
             media.setUser(user);
-            media.setFileName(file.getOriginalFilename());
+            media.setOriginalFileName(file.getOriginalFilename());
+            media.setFileName(fileName);
             media.setFileSize(file.getSize());
             media.setFileType(fileType);
             media.setStoragePath(relativePath);
